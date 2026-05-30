@@ -1,0 +1,2 @@
+"use client";
+export function EmptyState({ title, description }: { title: string; description: string }) { return <div className="rounded-[28px] border border-dashed border-white/15 bg-white/[0.03] p-8 text-center backdrop-blur-xl"><div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-white/10 bg-white/5 text-xl">✨</div><h3 className="mt-4 text-xl font-semibold">{title}</h3><p className="mx-auto mt-2 max-w-xl text-sm text-white/60">{description}</p></div>; }

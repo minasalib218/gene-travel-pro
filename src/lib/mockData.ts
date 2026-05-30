@@ -1,0 +1,32 @@
+export const plans = [
+  {
+    id: "paris-5d",
+    title: "Paris in 5 Days",
+    subtitle: "Romance • Culture • Food",
+    image: "/images/paris.jpg",
+    price: "From $1,200",
+    days: 5,
+    href: "/pricing",
+    tags: ["Romance", "City", "Food"],
+  },
+  {
+    id: "rome-4d",
+    title: "Rome Explorer",
+    subtitle: "History • Art • Walking",
+    image: "/images/rome.jpg",
+    price: "From $980",
+    days: 4,
+    href: "/pricing",
+    tags: ["History", "Walkable", "Art"],
+  },
+  {
+    id: "dubai-3d",
+    title: "Dubai Highlights",
+    subtitle: "Luxury • Adventure",
+    image: "/images/dubai.jpg",
+    price: "From $1,500",
+    days: 3,
+    href: "/pricing",
+    tags: ["Luxury", "Desert", "Skyline"],
+  },
+];

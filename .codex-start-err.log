@@ -1,0 +1,84 @@
+EventsPage database error: PrismaClientInitializationError: 
+Invalid `prisma.deal.findMany()` invocation:
+
+
+Error opening a TLS connection: No credentials are available in the security package (os error -2146893042)
+    at ei.handleRequestError (C:\Users\pc\Desktop\gene-travel-pro\node_modules\@prisma\client\runtime\library.js:121:7568)
+    at ei.handleAndLogRequestError (C:\Users\pc\Desktop\gene-travel-pro\node_modules\@prisma\client\runtime\library.js:121:6593)
+    at ei.request (C:\Users\pc\Desktop\gene-travel-pro\node_modules\@prisma\client\runtime\library.js:121:6300)
+    at async a (C:\Users\pc\Desktop\gene-travel-pro\node_modules\@prisma\client\runtime\library.js:130:9551)
+    at async EventsPage (C:\Users\pc\Desktop\gene-travel-pro\.next\server\app\events\page.js:1:1982) {
+  clientVersion: '6.19.3',
+  errorCode: undefined,
+  retryable: undefined
+}
+OffersPage database error: PrismaClientInitializationError: 
+Invalid `prisma.deal.findMany()` invocation:
+
+
+Error opening a TLS connection: No credentials are available in the security package (os error -2146893042)
+    at ei.handleRequestError (C:\Users\pc\Desktop\gene-travel-pro\node_modules\@prisma\client\runtime\library.js:121:7568)
+    at ei.handleAndLogRequestError (C:\Users\pc\Desktop\gene-travel-pro\node_modules\@prisma\client\runtime\library.js:121:6593)
+    at ei.request (C:\Users\pc\Desktop\gene-travel-pro\node_modules\@prisma\client\runtime\library.js:121:6300)
+    at async a (C:\Users\pc\Desktop\gene-travel-pro\node_modules\@prisma\client\runtime\library.js:130:9551)
+    at async OffersPage (C:\Users\pc\Desktop\gene-travel-pro\.next\server\app\offers\page.js:1:1986) {
+  clientVersion: '6.19.3',
+  errorCode: undefined,
+  retryable: undefined
+}
+DestinationsPage database error: PrismaClientInitializationError: 
+Invalid `prisma.readyPlan.findMany()` invocation:
+
+
+Error opening a TLS connection: No credentials are available in the security package (os error -2146893042)
+    at ei.handleRequestError (C:\Users\pc\Desktop\gene-travel-pro\node_modules\@prisma\client\runtime\library.js:121:7568)
+    at ei.handleAndLogRequestError (C:\Users\pc\Desktop\gene-travel-pro\node_modules\@prisma\client\runtime\library.js:121:6593)
+    at ei.request (C:\Users\pc\Desktop\gene-travel-pro\node_modules\@prisma\client\runtime\library.js:121:6300)
+    at async a (C:\Users\pc\Desktop\gene-travel-pro\node_modules\@prisma\client\runtime\library.js:130:9551)
+    at async DestinationsPage (C:\Users\pc\Desktop\gene-travel-pro\.next\server\app\destinations\page.js:1:2021) {
+  clientVersion: '6.19.3',
+  errorCode: undefined,
+  retryable: undefined
+}
+EventsPage database error: PrismaClientInitializationError: 
+Invalid `prisma.deal.findMany()` invocation:
+
+
+Error opening a TLS connection: No credentials are available in the security package (os error -2146893042)
+    at ei.handleRequestError (C:\Users\pc\Desktop\gene-travel-pro\node_modules\@prisma\client\runtime\library.js:121:7568)
+    at ei.handleAndLogRequestError (C:\Users\pc\Desktop\gene-travel-pro\node_modules\@prisma\client\runtime\library.js:121:6593)
+    at ei.request (C:\Users\pc\Desktop\gene-travel-pro\node_modules\@prisma\client\runtime\library.js:121:6300)
+    at async a (C:\Users\pc\Desktop\gene-travel-pro\node_modules\@prisma\client\runtime\library.js:130:9551)
+    at async EventsPage (C:\Users\pc\Desktop\gene-travel-pro\.next\server\app\events\page.js:1:1982) {
+  clientVersion: '6.19.3',
+  errorCode: undefined,
+  retryable: undefined
+}
+OffersPage database error: PrismaClientInitializationError: 
+Invalid `prisma.deal.findMany()` invocation:
+
+
+Error opening a TLS connection: No credentials are available in the security package (os error -2146893042)
+    at ei.handleRequestError (C:\Users\pc\Desktop\gene-travel-pro\node_modules\@prisma\client\runtime\library.js:121:7568)
+    at ei.handleAndLogRequestError (C:\Users\pc\Desktop\gene-travel-pro\node_modules\@prisma\client\runtime\library.js:121:6593)
+    at ei.request (C:\Users\pc\Desktop\gene-travel-pro\node_modules\@prisma\client\runtime\library.js:121:6300)
+    at async a (C:\Users\pc\Desktop\gene-travel-pro\node_modules\@prisma\client\runtime\library.js:130:9551)
+    at async OffersPage (C:\Users\pc\Desktop\gene-travel-pro\.next\server\app\offers\page.js:1:1986) {
+  clientVersion: '6.19.3',
+  errorCode: undefined,
+  retryable: undefined
+}
+DestinationsPage database error: PrismaClientInitializationError: 
+Invalid `prisma.readyPlan.findMany()` invocation:
+
+
+Error opening a TLS connection: No credentials are available in the security package (os error -2146893042)
+    at ei.handleRequestError (C:\Users\pc\Desktop\gene-travel-pro\node_modules\@prisma\client\runtime\library.js:121:7568)
+    at ei.handleAndLogRequestError (C:\Users\pc\Desktop\gene-travel-pro\node_modules\@prisma\client\runtime\library.js:121:6593)
+    at ei.request (C:\Users\pc\Desktop\gene-travel-pro\node_modules\@prisma\client\runtime\library.js:121:6300)
+    at async a (C:\Users\pc\Desktop\gene-travel-pro\node_modules\@prisma\client\runtime\library.js:130:9551)
+    at async DestinationsPage (C:\Users\pc\Desktop\gene-travel-pro\.next\server\app\destinations\page.js:1:2021) {
+  clientVersion: '6.19.3',
+  errorCode: undefined,
+  retryable: undefined
+}

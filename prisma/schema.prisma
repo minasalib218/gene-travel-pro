@@ -1,0 +1,876 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PassStatus {
+  ACTIVE
+  EXPIRED
+  CANCELED
+  REFUNDED
+}
+
+enum PlanStatus {
+  DRAFT
+  RECOMMENDED
+  ANALYZED
+  CONFIRMED
+}
+
+model PlanRecommendation {
+  id          String   @id @default(cuid())
+  planInputId String
+
+  headline    String
+  summary     String   @db.Text
+  hotels      Json
+  flights     Json
+  activities  Json
+  fitBullets  String[]
+  rawAi       Json?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  planInput   PlanInput @relation(fields: [planInputId], references: [id], onDelete: Cascade)
+
+  @@index([planInputId, createdAt])
+}
+
+model PlanInput {
+  id                 String   @id @default(cuid())
+  userId             String?
+
+  destination        String
+  startDate          DateTime
+  endDate            DateTime
+  departureCity      String
+  isFlexibleDates    Boolean  @default(false)
+  travelersCount     Int
+  travelersType      String
+  adults             Int      @default(1)
+  kids               Int      @default(0)
+  elderly            Int      @default(0)
+
+  totalBudget        Float
+  budgetPer          String
+  includeFlights     Boolean  @default(true)
+  travelLevel        String
+  shoppingBudget     Float    @default(0)
+  emergencyBuffer    Boolean  @default(true)
+
+  travelStyles       String[]
+  paceLevel          Int
+  priorities         String[]
+
+  stayType           String
+  hotelStars         Int
+  roomCount          Int
+  bedType            String
+  breakfastIncluded  Boolean  @default(false)
+  amenities          String[]
+  locationPreference String
+
+  directFlightsOnly          Boolean @default(false)
+  preferredAirlines          String?
+  cabinClass                 String
+  flightTimePreference       String
+  maxLayoverHours            Int
+
+  transportType              String
+  maxTravelTimeBetweenPlaces Int
+
+  mustDoList         String?  @db.Text
+  interests          String[]
+  avoidList          String?  @db.Text
+  activityIntensity  String
+
+  mobilityNeeds      String?
+  wakeUpTime         String?
+  dailyActiveHours   Int?
+  needsRestTime      Boolean  @default(false)
+  walkingTolerance   Int?
+  foodPreferences    String[]
+  specialOccasion    String?
+  hardConstraints    String?  @db.Text
+
+  rawInput           Json
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  recommendations    PlanRecommendation[]
+}
+
+enum PlanItemSlot {
+  MORNING
+  MIDDAY
+  AFTERNOON
+  EVENING
+}
+
+enum PlanItemKind {
+  ACTIVITY
+  HOTEL
+  FLIGHT
+  TRANSPORT
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum SavedItemKind {
+  PLAN
+  READY_PLAN
+}
+
+enum ReadyPlanStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+// =========================
+// PROFILE
+// =========================
+model Profile {
+  id        String   @id // use Supabase user id
+  email     String?  @unique
+  fullName  String?
+  country   String?
+  avatarUrl String?
+  role      UserRole @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  passes Pass[]
+  payments Payment[]
+  creditLedger CreditLedger[]
+  emailLogs EmailLog[]
+  aiUsageLogs AiUsageLog[]
+  rateLimitLogs RateLimitLog[]
+  supportTickets SupportTicket[]
+  trafficEvents TrafficEvent[]
+  plans  Plan[]
+
+  @@map("profiles")
+}
+
+// =========================
+// PASS
+// =========================
+model Pass {
+  id     String     @id @default(uuid())
+  userId String?
+  customerEmail String?
+  paymentId String? @unique
+  planType String?
+  tier   String
+  status PassStatus @default(ACTIVE)
+
+  tierActionsTotal Int @default(0)
+  tierActionsUsed  Int @default(0)
+  mainCreditsTotal Int @default(0)
+  mainCreditsUsed  Int @default(0)
+  editCreditsTotal Int @default(0)
+  editCreditsUsed  Int @default(0)
+  whatIfFreeTotal  Int @default(0)
+  whatIfFreeUsed   Int @default(0)
+  chatMessagesTotal Int?
+  chatMessagesUsed Int @default(0)
+  expertReviewTotal Int @default(0)
+  expertReviewUsed  Int @default(0)
+
+  startsAt  DateTime  @default(now())
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  meta Json?
+
+  profileId String?
+  profile   Profile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  payment   Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  plans Plan[]
+  creditLedger CreditLedger[]
+  aiUsageLogs AiUsageLog[]
+  rateLimitLogs RateLimitLog[]
+
+  @@index([userId])
+  @@index([profileId])
+  @@map("passes")
+}
+
+model Payment {
+  id                 String   @id @default(cuid())
+  userId             String?
+  customerEmail      String?
+  provider           String
+  providerCustomerId String?
+  providerOrderId    String?  @unique
+  providerCheckoutId String?  @unique
+  providerPaymentId  String?  @unique
+  subscriptionId     String?
+  planType           String
+  amount             Float?
+  currency           String?
+  status             String   @default("PENDING")
+  meta               Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  profile Profile? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  pass    Pass?
+  creditLedger CreditLedger[]
+  emailLogs EmailLog[]
+
+  @@index([userId])
+  @@index([status])
+  @@map("payments")
+}
+
+model WebhookEvent {
+  id        String   @id @default(cuid())
+  provider  String
+  eventId   String   @unique
+  eventType String
+  processed Boolean  @default(false)
+  errorMessage String?
+  payload   Json
+  createdAt DateTime @default(now())
+  processedAt DateTime?
+
+  @@index([provider])
+  @@map("webhook_events")
+}
+
+model CreditLedger {
+  id            String   @id @default(cuid())
+  userId        String?
+  customerEmail String?
+  passId        String?
+  paymentId     String?
+  type          String
+  actionType    String?
+  creditType    String?
+  amount        Int
+  balanceBefore Int?
+  balanceAfter  Int?
+  reason        String?
+  metadata      Json?
+  createdAt     DateTime @default(now())
+
+  profile Profile? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  pass    Pass?    @relation(fields: [passId], references: [id], onDelete: SetNull)
+  payment Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([paymentId])
+  @@index([passId])
+  @@map("credit_ledger")
+}
+
+model EmailLog {
+  id            String   @id @default(cuid())
+  userId        String?
+  customerEmail String?
+  paymentId     String?
+  type          String
+  status        String   @default("PENDING")
+  provider      String?
+  errorMessage  String?
+  createdAt     DateTime @default(now())
+
+  profile Profile? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  payment Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([paymentId])
+  @@map("email_logs")
+}
+
+model AiUsageLog {
+  id            String   @id @default(cuid())
+  userId        String?
+  customerEmail String?
+  passId        String?
+  actionType    String
+  inputTokens   Int?
+  outputTokens  Int?
+  totalTokens   Int?
+  model         String?
+  estimatedCost Float?
+  status        String   @default("SUCCESS")
+  errorMessage  String?
+  createdAt     DateTime @default(now())
+
+  profile Profile? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  pass    Pass?    @relation(fields: [passId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([passId])
+  @@map("ai_usage_logs")
+}
+
+model RateLimitLog {
+  id            String   @id @default(cuid())
+  userId        String?
+  customerEmail String?
+  passId        String?
+  actionType    String
+  limitType     String
+  createdAt     DateTime @default(now())
+
+  profile Profile? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  pass    Pass?    @relation(fields: [passId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([passId])
+  @@map("rate_limit_logs")
+}
+
+// =========================
+// PLAN
+// =========================
+model Plan {
+  id     String  @id @default(uuid())
+  userId String
+  passId String?
+
+  status PlanStatus @default(DRAFT)
+
+  title       String
+  destination String
+  startDate   DateTime
+  endDate     DateTime
+
+  inputsJson         Json?
+  recommendationJson Json?
+  analysisJson       Json?
+  summaryJson        Json?
+
+  createdAt DateTime @default(now())
+
+  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pass Pass?   @relation(fields: [passId], references: [id], onDelete: SetNull)
+
+  days PlanDay[]
+
+  @@index([userId])
+  @@index([passId])
+  @@map("plans")
+}
+
+// =========================
+// PLAN DAY
+// =========================
+model PlanDay {
+  id       String    @id @default(uuid())
+  planId   String
+  dayIndex Int
+  date     DateTime?
+
+  plan  Plan       @relation(fields: [planId], references: [id], onDelete: Cascade)
+  items PlanItem[]
+
+  @@index([planId])
+  @@index([planId, dayIndex])
+  @@map("plan_days")
+}
+
+// =========================
+// PLAN ITEM
+// =========================
+model PlanItem {
+  id        String       @id @default(uuid())
+  planDayId String
+  slot      PlanItemSlot
+  kind      PlanItemKind
+
+  startTime String?
+  endTime   String?
+
+  provider   String?
+  providerId String?
+
+  imageUrl String?
+  deeplink String?
+  meta     Json?
+
+  planDay PlanDay @relation(fields: [planDayId], references: [id], onDelete: Cascade)
+
+  @@index([planDayId])
+  @@map("plan_items")
+}
+
+// =========================
+// ACTIVATION TOKEN
+// =========================
+model ActivationToken {
+  id        String    @id @default(uuid())
+  token     String    @unique
+  passTier  String
+  used      Boolean   @default(false)
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@map("activation_tokens")
+}
+
+// =========================
+// TIER ACTION LOG
+// =========================
+model TierActionLog {
+  id             String @id @default(uuid())
+  userId         String
+  passId         String
+  idempotencyKey String @unique
+
+  actionType String?
+  planId     String?
+  meta       Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([passId])
+  @@map("tier_action_logs")
+}
+
+// =========================
+// SAVED ITEM
+// =========================
+model SavedItem {
+  id        String        @id @default(uuid())
+  userId    String
+  kind      SavedItemKind
+  refId     String
+  meta      Json?
+  createdAt DateTime      @default(now())
+
+  @@index([userId])
+  @@map("saved_items")
+}
+
+// =========================
+// DEAL
+// =========================
+model Deal {
+  id        String   @id @default(uuid())
+  title     String
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@map("deals")
+}
+
+// =========================
+// READY PLAN
+// =========================
+model ReadyPlan {
+  id     String          @id @default(uuid())
+  status ReadyPlanStatus @default(DRAFT)
+
+  slug        String  @unique
+  title       String
+  subtitle    String?
+  country     String?
+  city        String?
+  destination String
+  style       String?
+  daysCount   Int     @default(0)
+
+  heroImage  String?
+  coverImage String?
+  summary    String?
+  seoTitle   String?
+  seoDescription String?
+  tags       String[] @default([])
+  season     String?
+  showOnHome Boolean  @default(false)
+  priceFrom  Int?
+  currency   String  @default("USD")
+
+  daysJson    Json @default(dbgenerated("'[]'::jsonb"))
+  contentJson Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  links ReadyPlanLink[]
+  dayRecords ReadyPlanDay[]
+
+  @@map("ready_plans")
+}
+
+model Destination {
+  id            String   @id @default(cuid())
+  title         String
+  slug          String   @unique
+  imageUrl      String?
+  iconUrl       String?
+  affiliateLink String?
+  description   String?
+  status        String   @default("draft")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([status, updatedAt])
+  @@map("destinations")
+}
+
+model Offer {
+  id            String   @id @default(cuid())
+  title         String
+  slug          String   @unique
+  imageUrl      String?
+  iconUrl       String?
+  affiliateLink String?
+  location      String?
+  country       String?
+  duration      String?
+  startingPrice String?
+  description   String?
+  discountBadge String?
+  expiresAt     DateTime?
+  featured      Boolean  @default(false)
+  showOnHome    Boolean  @default(false)
+  status        String   @default("draft")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([status, updatedAt])
+  @@map("offers")
+}
+
+model Event {
+  id            String   @id @default(cuid())
+  title         String
+  slug          String   @unique
+  imageUrl      String?
+  iconUrl       String?
+  affiliateLink String?
+  category      String?
+  location      String?
+  country       String?
+  dateRange     String?
+  description   String?
+  showOnHome    Boolean  @default(false)
+  status        String   @default("draft")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([status, updatedAt])
+  @@map("events")
+}
+
+// =========================
+// HOME CONFIG
+// =========================
+model HomeConfig {
+  id               String   @id @default("singleton")
+  heroTitle        String   @default("Gene Travel")
+  heroSubtitle     String   @default("Cinematic Ready Plans")
+  ctaPrimaryText   String   @default("Explore ready plans")
+  ctaPrimaryHref   String   @default("/ready-plans")
+  ctaSecondaryText String   @default("Create my smart plan")
+  ctaSecondaryHref String   @default("/pricing")
+  updatedAt        DateTime @updatedAt
+
+  @@map("home_config")
+}
+
+model ReadyPlanDay {
+  id          String   @id @default(cuid())
+  readyPlanId String
+  dayNumber   Int
+  title       String?
+  city        String?
+  country     String?
+  date        String?
+  temperature String?
+  mainImageUrl String?
+  locationName String?
+  locationDescription String?
+  description String?
+  notesJson   Json?
+  sortOrder   Int      @default(0)
+  items       Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  readyPlan ReadyPlan @relation(fields: [readyPlanId], references: [id], onDelete: Cascade)
+  itemRecords ReadyPlanItem[]
+
+  @@index([readyPlanId, dayNumber])
+  @@map("ready_plan_days")
+}
+
+model ReadyPlanItem {
+  id             String   @id @default(cuid())
+  readyPlanDayId String
+  type           String
+  title          String
+  description    String?
+  imageUrl       String?
+  price          String?
+  peopleCount    String?
+  statusLabel    String?
+  categoryLabel  String?
+  affiliateUrl   String?
+  buttonLabel    String?
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  day ReadyPlanDay @relation(fields: [readyPlanDayId], references: [id], onDelete: Cascade)
+
+  @@index([readyPlanDayId, sortOrder])
+  @@map("ready_plan_items")
+}
+
+// =========================
+// READY PLAN LINKS
+// =========================
+model ReadyPlanLink {
+  id          String  @id @default(uuid())
+  readyPlanId String
+  kind        String
+  label       String
+  deeplink    String
+  imageUrl    String?
+  sortOrder   Int     @default(0)
+
+  readyPlan ReadyPlan @relation(fields: [readyPlanId], references: [id], onDelete: Cascade)
+
+  @@index([readyPlanId])
+  @@map("ready_plan_links")
+}
+
+model AffiliateLink {
+  id          String   @id @default(cuid())
+  provider    String
+  category    String
+  country     String?
+  city        String?
+  destination String?
+  label       String?
+  url         String
+  trackingId  String?
+  status      String   @default("ACTIVE")
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([provider, category])
+  @@map("affiliate_links")
+}
+
+model ApiHealthLog {
+  id           String   @id @default(cuid())
+  serviceName  String
+  status       String
+  responseTime Int?
+  errorMessage String?
+  checkedAt    DateTime @default(now())
+
+  @@index([serviceName, checkedAt])
+  @@map("api_health_logs")
+}
+
+model ErrorLog {
+  id         String   @id @default(cuid())
+  source     String
+  level      String   @default("ERROR")
+  message    String
+  stack      String?
+  metadata   Json?
+  status     String   @default("OPEN")
+  createdAt  DateTime @default(now())
+  resolvedAt DateTime?
+
+  @@index([source, status])
+  @@map("error_logs")
+}
+
+model SupportTicket {
+  id        String   @id @default(cuid())
+  userId    String?
+  email     String
+  subject   String?
+  message   String
+  status    String   @default("OPEN")
+  priority  String   @default("MEDIUM")
+  adminNote String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profile Profile? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([email, status])
+  @@map("support_tickets")
+}
+
+model TrafficEvent {
+  id        String   @id @default(cuid())
+  userId    String?
+  sessionId String?
+  path      String?
+  source    String?
+  medium    String?
+  campaign  String?
+  country   String?
+  eventType String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  profile Profile? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([eventType, createdAt])
+  @@index([source, createdAt])
+  @@map("traffic_events")
+}
+
+// =========================
+// CUSTOMER EVENTS
+// =========================
+model CustomerEvent {
+  id        String  @id @default(uuid())
+  userId    String?
+  email     String?
+  eventType String
+  value     Float?
+  currency  String?
+  meta      Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([eventType])
+  @@index([createdAt])
+  @@map("customer_events")
+}
+
+// =========================
+// ADMIN ACTION REQUESTS
+// =========================
+model AdminActionRequest {
+  id           String   @id @default(uuid())
+  action       String
+  targetUserId String
+  meta         Json?
+  status       String   @default("PENDING")
+  createdAt    DateTime @default(now())
+
+  @@index([status])
+  @@map("admin_action_requests")
+}
+
+// =========================
+// ACCOUNTING ENTRIES
+// =========================
+model AccountingEntry {
+  id       String @id @default(uuid())
+  day      String
+  kind     String
+  title    String
+  amount   Float
+  currency String @default("USD")
+  meta     Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([day])
+  @@map("accounting_entries")
+}
+
+model AdminSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@map("admin_settings")
+}
+
+model AnalyticsEvent {
+  id            String   @id @default(cuid())
+  userId        String?
+  sessionId     String
+  eventName     String
+  eventCategory String?
+  pagePath      String?
+  referrer      String?
+  country       String?
+  city          String?
+  deviceType    String?
+  browser       String?
+  os            String?
+  metadata      Json?
+  createdAt     DateTime @default(now())
+
+  @@index([eventName, createdAt])
+  @@index([sessionId, createdAt])
+  @@index([country, createdAt])
+  @@map("analytics_events")
+}
+
+model ConversionEvent {
+  id             String   @id @default(cuid())
+  userId         String?
+  sessionId      String
+  conversionType String
+  value          Float?
+  currency       String?
+  source         String?
+  campaign       String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  @@index([conversionType, createdAt])
+  @@index([sessionId, createdAt])
+  @@map("conversion_events")
+}
+
+model PurchaseTracking {
+  id          String   @id @default(cuid())
+  userId      String?
+  paymentId   String?
+  sessionId   String
+  packageName String
+  amount      Float
+  currency    String
+  provider    String?
+  status      String
+  source      String?
+  campaign    String?
+  metaEventId String?
+  gaClientId  String?
+  createdAt   DateTime @default(now())
+
+  @@index([status, createdAt])
+  @@index([packageName, createdAt])
+  @@index([sessionId, createdAt])
+  @@map("purchase_tracking")
+}
+
+model FunnelEvent {
+  id        String   @id @default(cuid())
+  userId    String?
+  sessionId String
+  stepName  String
+  stepOrder Int
+  pagePath  String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([stepOrder, createdAt])
+  @@index([sessionId, createdAt])
+  @@map("funnel_events")
+}

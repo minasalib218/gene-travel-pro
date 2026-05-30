@@ -1,0 +1,38 @@
+
+> gene-travel@1.0.0 start
+> next start --port 3003
+
+   ▲ Next.js 14.0.0
+   - Local:        http://localhost:3003
+
+ ✓ Ready in 538ms
+prisma:error 
+Invalid `prisma.deal.findMany()` invocation:
+
+
+Error opening a TLS connection: No credentials are available in the security package (os error -2146893042)
+prisma:error 
+Invalid `prisma.deal.findMany()` invocation:
+
+
+Error opening a TLS connection: No credentials are available in the security package (os error -2146893042)
+prisma:error 
+Invalid `prisma.readyPlan.findMany()` invocation:
+
+
+Error opening a TLS connection: No credentials are available in the security package (os error -2146893042)
+prisma:error 
+Invalid `prisma.deal.findMany()` invocation:
+
+
+Error opening a TLS connection: No credentials are available in the security package (os error -2146893042)
+prisma:error 
+Invalid `prisma.deal.findMany()` invocation:
+
+
+Error opening a TLS connection: No credentials are available in the security package (os error -2146893042)
+prisma:error 
+Invalid `prisma.readyPlan.findMany()` invocation:
+
+
+Error opening a TLS connection: No credentials are available in the security package (os error -2146893042)
