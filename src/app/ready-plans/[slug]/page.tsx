@@ -5,21 +5,6 @@ import { buildDefaultReadyPlanContent, type ReadyPlanContent } from "@/lib/ready
 import { sanitizeReadyPlanContentForPublic } from "@/lib/ready-plan-public";
 import { isDatabaseUnavailableError, tableExists, withDatabaseFallback } from "@/lib/prisma-safe";
 
-function hasMeaningfulPublicHtml(html?: string | null) {
-  if (!html || !html.trim()) return false;
-
-  const imageMatches = html.match(/<img\b/gi) ?? [];
-  const text = html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  return text.length >= 40 || imageMatches.length >= 2;
-}
-
 function getBookableItemIds(content: ReadyPlanContent, dayRecords?: any[] | null) {
   const ids = new Set<string>();
 
@@ -156,14 +141,6 @@ export default async function ReadyPlanDetailPage({
   });
   const bookableItemIds = getBookableItemIds(rawContent, (plan as any).dayRecords);
   const content = sanitizeReadyPlanContentForPublic(rawContent);
-
-  if (hasMeaningfulPublicHtml(content.publicHtml)) {
-    return (
-      <main className="min-h-screen bg-[#050505]">
-        <div dangerouslySetInnerHTML={{ __html: content.publicHtml }} />
-      </main>
-    );
-  }
 
   return (
     <CinematicReadyPlanPage
