@@ -25,7 +25,7 @@ function getBookableItemIds(content: ReadyPlanContent, dayRecords?: any[] | null
 
   content.days.forEach((day) => {
     day.timelineItems.forEach((item) => {
-      if (item.showButton !== false && item.deeplink?.trim()) {
+      if ((item as any).showButton !== false && item.deeplink?.trim()) {
         ids.add(item.id);
       }
     });

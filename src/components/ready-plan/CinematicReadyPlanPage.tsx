@@ -448,7 +448,7 @@ export default function CinematicReadyPlanPage({
                       const Icon = itemIcon(item.type);
                       const bookingHref = getReadyPlanBookingHref(
                         item.id,
-                        item.showButton !== false && Boolean(item.buttonLabel?.trim() || BOOK_NOW_LABEL),
+                        (item as any).showButton !== false && Boolean(item.buttonLabel?.trim() || BOOK_NOW_LABEL),
                       );
                       return (
                         <div key={item.id} className="relative">
@@ -808,7 +808,7 @@ function MobileReadyPlanView({
                   const Icon = itemIcon(item.type);
                   const bookingHref = getReadyPlanBookingHref(
                     item.id,
-                    item.showButton !== false && Boolean(item.buttonLabel?.trim() || BOOK_NOW_LABEL),
+                    (item as any).showButton !== false && Boolean(item.buttonLabel?.trim() || BOOK_NOW_LABEL),
                   );
                   return (
                     <div key={item.id} className="relative">
