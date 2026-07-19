@@ -1,14 +1,29 @@
 import { createClient } from "@supabase/supabase-js";
+import { getSupabaseAdminKey, getSupabaseUrl } from "@/lib/env";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+let cachedSupabaseAdmin: ReturnType<typeof createClient> | null = null;
 
-if (!supabaseUrl) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL");
-if (!serviceRoleKey) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
+export function getSupabaseAdmin() {
+  if (cachedSupabaseAdmin) return cachedSupabaseAdmin;
 
-export const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
+  const supabaseUrl = getSupabaseUrl();
+  const serviceRoleKey = getSupabaseAdminKey();
+
+  if (!supabaseUrl) throw new Error("Missing Supabase URL environment variable");
+  if (!serviceRoleKey) throw new Error("Missing Supabase admin key environment variable");
+
+  cachedSupabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+
+  return cachedSupabaseAdmin;
+}
+
+export const supabaseAdmin = new Proxy({} as ReturnType<typeof createClient>, {
+  get(_target, property, receiver) {
+    return Reflect.get(getSupabaseAdmin(), property, receiver);
   },
 });
