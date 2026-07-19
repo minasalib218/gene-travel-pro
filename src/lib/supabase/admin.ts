@@ -1,13 +1,12 @@
 import { createClient } from "@supabase/supabase-js";
-import { getSupabaseAdminKey, getSupabaseUrl } from "@/lib/env";
 
 let cachedSupabaseAdmin: ReturnType<typeof createClient> | null = null;
 
 export function getSupabaseAdmin() {
   if (cachedSupabaseAdmin) return cachedSupabaseAdmin;
 
-  const supabaseUrl = getSupabaseUrl();
-  const serviceRoleKey = getSupabaseAdminKey();
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
 
   if (!supabaseUrl) throw new Error("Missing Supabase URL environment variable");
   if (!serviceRoleKey) throw new Error("Missing Supabase admin key environment variable");
