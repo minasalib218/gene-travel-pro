@@ -1,8 +1,51 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db/client";
 import CinematicReadyPlanPage from "@/components/ready-plan/CinematicReadyPlanPage";
-import { buildDefaultReadyPlanContent } from "@/lib/ready-plan-content";
+import { buildDefaultReadyPlanContent, type ReadyPlanContent } from "@/lib/ready-plan-content";
+import { sanitizeReadyPlanContentForPublic } from "@/lib/ready-plan-public";
 import { isDatabaseUnavailableError, tableExists, withDatabaseFallback } from "@/lib/prisma-safe";
+
+function hasMeaningfulPublicHtml(html?: string | null) {
+  if (!html || !html.trim()) return false;
+
+  const imageMatches = html.match(/<img\b/gi) ?? [];
+  const text = html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return text.length >= 40 || imageMatches.length >= 2;
+}
+
+function getBookableItemIds(content: ReadyPlanContent, dayRecords?: any[] | null) {
+  const ids = new Set<string>();
+
+  content.days.forEach((day) => {
+    day.timelineItems.forEach((item) => {
+      if (item.showButton !== false && item.deeplink?.trim()) {
+        ids.add(item.id);
+      }
+    });
+  });
+
+  if (Array.isArray(dayRecords)) {
+    dayRecords.forEach((dayRecord, dayIndex) => {
+      const contentDay = content.days[dayIndex];
+      const itemRecords = Array.isArray(dayRecord?.itemRecords) ? dayRecord.itemRecords : [];
+      itemRecords.forEach((itemRecord: any, itemIndex: number) => {
+        const contentItem = contentDay?.timelineItems?.[itemIndex];
+        if (contentItem && itemRecord?.affiliateUrl?.trim()) {
+          ids.add(contentItem.id);
+        }
+      });
+    });
+  }
+
+  return Array.from(ids);
+}
 
 export default async function ReadyPlanDetailPage({
   params,
@@ -11,6 +54,30 @@ export default async function ReadyPlanDetailPage({
 }) {
   let plan = null as Awaited<ReturnType<typeof prisma.readyPlan.findUnique>> | null;
   const includeLinks = await tableExists("ready_plan_links");
+  const includeDayRecords = await tableExists("ready_plan_days");
+  const includeItemRecords = includeDayRecords ? await tableExists("ready_plan_items") : false;
+  const dayRecordsInclude = includeDayRecords
+    ? {
+        dayRecords: {
+          orderBy: { sortOrder: "asc" as const },
+          ...(includeItemRecords
+            ? {
+                include: {
+                  itemRecords: {
+                    orderBy: { sortOrder: "asc" as const },
+                    select: {
+                      id: true,
+                      affiliateUrl: true,
+                      buttonLabel: true,
+                      sortOrder: true,
+                    },
+                  },
+                },
+              }
+            : {}),
+        },
+      }
+    : {};
 
   try {
     plan = includeLinks
@@ -22,15 +89,17 @@ export default async function ReadyPlanDetailPage({
                 links: {
                   orderBy: { sortOrder: "asc" },
                 },
+                ...dayRecordsInclude,
               },
-            }),
+            } as any),
           null,
         )
       : await withDatabaseFallback(
           () =>
             prisma.readyPlan.findUnique({
               where: { slug: params.slug },
-            }),
+              include: dayRecordsInclude,
+            } as any),
           null,
         );
   } catch (error: any) {
@@ -63,6 +132,7 @@ export default async function ReadyPlanDetailPage({
                   },
                 }
               : {}),
+            ...dayRecordsInclude,
           },
         } as any),
       null,
@@ -71,7 +141,7 @@ export default async function ReadyPlanDetailPage({
 
   if (!plan || plan.status !== "PUBLISHED") return notFound();
 
-  const content = buildDefaultReadyPlanContent({
+  const rawContent = buildDefaultReadyPlanContent({
     title: plan.title,
     subtitle: plan.subtitle,
     destination: plan.destination,
@@ -84,12 +154,23 @@ export default async function ReadyPlanDetailPage({
     daysJson: plan.daysJson,
     contentJson: (plan as any).contentJson,
   });
+  const bookableItemIds = getBookableItemIds(rawContent, (plan as any).dayRecords);
+  const content = sanitizeReadyPlanContentForPublic(rawContent);
+
+  if (hasMeaningfulPublicHtml(content.publicHtml)) {
+    return (
+      <main className="min-h-screen bg-[#050505]">
+        <div dangerouslySetInnerHTML={{ __html: content.publicHtml }} />
+      </main>
+    );
+  }
 
   return (
     <CinematicReadyPlanPage
       planId={plan.id}
       slug={plan.slug}
       content={content}
+      bookableItemIds={bookableItemIds}
     />
   );
 }

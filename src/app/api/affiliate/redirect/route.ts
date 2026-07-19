@@ -5,11 +5,24 @@ import type { RecommendationPayload } from "@/lib/recommendation/types";
 import { ANALYTICS_SESSION_COOKIE, getAnalyticsLocation, parseUserAgent, recordAnalyticsEvent } from "@/lib/analytics-server";
 import { tableExists } from "@/lib/prisma-safe";
 import { buildDefaultReadyPlanContent } from "@/lib/ready-plan-content";
+import { revalidateBookingReference } from "@/lib/travel-engine/booking-revalidation";
 
 export const dynamic = "force-dynamic";
 
 function getBookingItemFromPayload(payload: RecommendationPayload | null | undefined, itemKey: string) {
   return payload?.summaryState?.bookingState?.items?.find((item) => item.key === itemKey) ?? null;
+}
+
+function getSafeAffiliateUrl(value: string | null | undefined) {
+  if (!value) return null;
+
+  try {
+    const destination = new URL(value);
+    if (destination.protocol !== "https:") return null;
+    return destination.toString();
+  } catch {
+    return null;
+  }
 }
 
 export async function GET(req: NextRequest) {
@@ -32,6 +45,80 @@ export async function GET(req: NextRequest) {
       const [readyPlanId, contentItemId] = readyPlanItemId.split(":");
       if (!readyPlanId || !contentItemId) {
         return NextResponse.json({ ok: false, message: "Booking link is not available yet. Please try another option." }, { status: 400 });
+      }
+
+      const itemRecord = await prisma.readyPlanItem
+        .findUnique({
+          where: { id: contentItemId },
+          select: {
+            id: true,
+            title: true,
+            type: true,
+            affiliateUrl: true,
+            day: {
+              select: {
+                readyPlan: {
+                  select: {
+                    id: true,
+                    slug: true,
+                    title: true,
+                    status: true,
+                  },
+                },
+              },
+            },
+          },
+        })
+        .catch(() => null);
+
+      if (itemRecord) {
+        const itemPlan = itemRecord.day?.readyPlan;
+        const destinationUrl = getSafeAffiliateUrl(itemRecord.affiliateUrl);
+
+        if (!itemPlan || itemPlan.id !== readyPlanId || itemPlan.status !== "PUBLISHED" || !destinationUrl) {
+          return NextResponse.json({ ok: false, message: "Booking link is not available yet. Please try another option." }, { status: 404 });
+        }
+
+        const metadata = {
+          contentType: "ready-plan-item",
+          readyPlanId,
+          contentItemId,
+          itemRecordId: itemRecord.id,
+          slug: itemPlan.slug,
+          title: itemPlan.title,
+          itemTitle: itemRecord.title,
+          itemType: itemRecord.type,
+        };
+
+        await (prisma as any).trafficEvent
+          ?.create({
+            data: {
+              userId,
+              path: `/api/affiliate/redirect`,
+              source: "ready-plan-item",
+              eventType: "AFFILIATE_BOOKING_CLICK",
+              metadata,
+            },
+          })
+          ?.catch(() => null);
+
+        await recordAnalyticsEvent({
+          userId: userId ?? undefined,
+          sessionId,
+          eventName: "affiliate_redirect_clicked",
+          eventCategory: "commerce",
+          pagePath: "/api/affiliate/redirect",
+          referrer: req.headers.get("referer"),
+          country,
+          city,
+          deviceType,
+          browser,
+          os,
+          metadata,
+        });
+
+        if (resolveOnly) return NextResponse.json({ ok: true });
+        return NextResponse.redirect(destinationUrl, { status: 302 });
       }
 
       const plan = await prisma.readyPlan.findUnique({
@@ -73,7 +160,8 @@ export async function GET(req: NextRequest) {
       });
 
       const item = content.days.flatMap((day) => day.timelineItems).find((entry) => entry.id === contentItemId);
-      if (!item?.deeplink) {
+      const destinationUrl = getSafeAffiliateUrl(item?.deeplink);
+      if (!destinationUrl) {
         return NextResponse.json({ ok: false, message: "Booking link is not available yet. Please try another option." }, { status: 404 });
       }
 
@@ -114,8 +202,8 @@ export async function GET(req: NextRequest) {
         metadata,
       });
 
-      if (resolveOnly) return NextResponse.json({ ok: true, url: item.deeplink });
-      return NextResponse.redirect(item.deeplink, { status: 302 });
+      if (resolveOnly) return NextResponse.json({ ok: true });
+      return NextResponse.redirect(destinationUrl, { status: 302 });
     }
 
     if (affiliateLinkId && ["destination", "offer", "event", "ready-plan"].includes(contentType || "")) {
@@ -190,8 +278,13 @@ export async function GET(req: NextRequest) {
         metadata,
       });
 
-      if (resolveOnly) return NextResponse.json({ ok: true, url: linkUrl });
-      return NextResponse.redirect(linkUrl, { status: 302 });
+      const destinationUrl = getSafeAffiliateUrl(linkUrl);
+      if (!destinationUrl) {
+        return NextResponse.json({ ok: false, message: "Booking link is not available yet. Please try another option." }, { status: 400 });
+      }
+
+      if (resolveOnly) return NextResponse.json({ ok: true, url: destinationUrl });
+      return NextResponse.redirect(destinationUrl, { status: 302 });
     }
 
     if (affiliateLinkId) {
@@ -217,7 +310,7 @@ export async function GET(req: NextRequest) {
         ?.catch(() => null);
 
       await recordAnalyticsEvent({
-        userId: data.user.id,
+        userId: userId ?? undefined,
         sessionId,
         eventName: "affiliate_redirect_clicked",
         eventCategory: "commerce",
@@ -236,11 +329,16 @@ export async function GET(req: NextRequest) {
         },
       });
 
-      if (resolveOnly) {
-        return NextResponse.json({ ok: true, url: link.url });
+      const destinationUrl = getSafeAffiliateUrl(link.url);
+      if (!destinationUrl) {
+        return NextResponse.json({ ok: false, message: "Booking link is not available yet. Please try another option." }, { status: 400 });
       }
 
-      return NextResponse.redirect(link.url, { status: 302 });
+      if (resolveOnly) {
+        return NextResponse.json({ ok: true, url: destinationUrl });
+      }
+
+      return NextResponse.redirect(destinationUrl, { status: 302 });
     }
 
     if (!planId || !itemKey) {
@@ -270,8 +368,42 @@ export async function GET(req: NextRequest) {
     const payload = (summaryJson.payload ?? null) as RecommendationPayload | null;
     const bookingItem = getBookingItemFromPayload(payload, itemKey);
 
-    if (!bookingItem || !bookingItem.affiliateRedirectUrl) {
+    if (!bookingItem) {
       return NextResponse.json({ ok: false, message: "Booking link is not available yet. Please try another option." }, { status: 404 });
+    }
+
+    const reference = bookingItem.bookingReference
+      ? {
+          supplier: bookingItem.bookingReference.supplier ?? null,
+          supplierItemId: bookingItem.bookingReference.supplierItemId ?? null,
+          sourceUrl: bookingItem.bookingReference.sourceUrl ?? null,
+          category: bookingItem.bookingReference.category,
+          affiliateEligible: Boolean(bookingItem.bookingReference.affiliateEligible),
+          internalId: bookingItem.bookingReference.internalId ?? bookingItem.id,
+          lastValidatedAt: bookingItem.bookingReference.lastValidatedAt ?? bookingItem.lastValidatedAt ?? null,
+        }
+      : bookingItem.affiliateRedirectUrl
+      ? {
+          supplier: bookingItem.affiliateProvider || bookingItem.provider || null,
+          supplierItemId: bookingItem.id,
+          sourceUrl: bookingItem.affiliateRedirectUrl,
+          category: bookingItem.type,
+          affiliateEligible: true,
+          internalId: bookingItem.id,
+          lastValidatedAt: bookingItem.lastValidatedAt ?? null,
+        }
+      : null;
+
+    if (!reference) {
+      return NextResponse.json({ ok: false, message: "Booking link is not available yet. Please try another option." }, { status: 404 });
+    }
+
+    const revalidated = revalidateBookingReference(reference);
+    if (!revalidated.ok || !revalidated.url) {
+      return NextResponse.json(
+        { ok: false, message: revalidated.reason || "This booking item needs a refresh before it can be booked." },
+        { status: 409 },
+      );
     }
 
     await (prisma as any).trafficEvent
@@ -315,10 +447,10 @@ export async function GET(req: NextRequest) {
     });
 
     if (resolveOnly) {
-      return NextResponse.json({ ok: true, url: bookingItem.affiliateRedirectUrl });
+      return NextResponse.json({ ok: true, url: revalidated.url, status: revalidated.status });
     }
 
-    return NextResponse.redirect(bookingItem.affiliateRedirectUrl, { status: 302 });
+    return NextResponse.redirect(revalidated.url, { status: 302 });
   } catch (error) {
     console.error("affiliate redirect error", error);
     return NextResponse.json({ ok: false, message: "Booking link is not available yet. Please try another option." }, { status: 500 });

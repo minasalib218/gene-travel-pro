@@ -9,6 +9,7 @@ import {
 export function sanitizeReadyPlanContentForPublic(content: ReadyPlanContent): ReadyPlanContent {
   return {
     ...content,
+    publicHtml: "",
     days: content.days.map((day) => ({
       ...day,
       timelineItems: day.timelineItems.map((item): ReadyPlanTimelineItem => ({
