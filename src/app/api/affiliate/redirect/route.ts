@@ -371,8 +371,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: false, message: "Booking link is not available yet. Please try another option." }, { status: 404 });
     }
 
+    const bookingReference = (bookingItem as any).bookingReference;
     const destinationUrl = getSafeAffiliateUrl(
-      bookingItem.bookingReference?.sourceUrl ?? bookingItem.affiliateRedirectUrl,
+      bookingReference?.sourceUrl ?? bookingItem.affiliateRedirectUrl,
     );
     if (!destinationUrl) {
       return NextResponse.json({ ok: false, message: "Booking link is not available yet. Please try another option." }, { status: 404 });
