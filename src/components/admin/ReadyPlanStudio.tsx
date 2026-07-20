@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   CalendarDays,
@@ -20,6 +20,7 @@ import {
   Ticket,
   UtensilsCrossed,
   Waves,
+  X,
 } from "lucide-react";
 import {
   buildDefaultReadyPlanContent,
@@ -29,6 +30,9 @@ import {
   type ReadyPlanSuggestion,
   type ReadyPlanTimelineItem,
 } from "@/lib/ready-plan-content";
+import { imageUploadConstraintsLabel } from "@/lib/content/shared";
+import { prepareImageForUpload } from "@/lib/client/prepareImageForUpload";
+import { generatePublicPlanHtml } from "@/lib/ready-plan-public-view";
 
 type PlanRecord = {
   id: string;
@@ -53,6 +57,13 @@ type PlanRecord = {
   currency: string;
   contentJson?: unknown;
   daysJson?: unknown;
+  links?: Array<{
+    kind: string;
+    label: string;
+    deeplink: string;
+    imageUrl?: string | null;
+    sortOrder: number;
+  }>;
 };
 
 type StudioProps = {
@@ -68,6 +79,8 @@ const ITEM_TYPES: ReadyPlanTimelineItem["type"][] = [
   "event",
   "restaurant",
 ];
+
+const BOOK_NOW_LABEL = "Book Now";
 
 function uid(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
@@ -93,7 +106,8 @@ function emptyTimelineItem(): ReadyPlanTimelineItem {
     description: "",
     imageUrl: "",
     deeplink: "",
-    buttonLabel: "Book Now",
+    buttonLabel: BOOK_NOW_LABEL,
+    showButton: true,
     price: "",
     people: "",
   };
@@ -109,8 +123,48 @@ function emptySuggestion(): ReadyPlanSuggestion {
     matchScore: "",
     price: "",
     duration: "",
-    ctaText: "Add to Plan",
+    ctaText: BOOK_NOW_LABEL,
   };
+}
+
+function mergeTextParts(...values: Array<string | null | undefined>) {
+  return values
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter(Boolean)
+    .filter((value, index, items) => items.indexOf(value) === index)
+    .join(" | ");
+}
+
+function mergeSuggestions(source: ReadyPlanSuggestion, target: ReadyPlanSuggestion): ReadyPlanSuggestion {
+  return {
+    ...target,
+    title: mergeTextParts(target.title, source.title),
+    category: mergeTextParts(target.category, source.category),
+    imageUrl: target.imageUrl || source.imageUrl,
+    matchReason: mergeTextParts(target.matchReason, source.matchReason),
+    matchScore: mergeTextParts(target.matchScore, source.matchScore),
+    price: mergeTextParts(target.price, source.price),
+    duration: mergeTextParts(target.duration, source.duration),
+    ctaText: target.ctaText || source.ctaText || BOOK_NOW_LABEL,
+  };
+}
+
+function getUploadErrorMessage(codeOrMessage: string, label: string) {
+  switch (codeOrMessage) {
+    case "INVALID_IMAGE_TYPE":
+      return `Could not upload ${label}. Please use ${imageUploadConstraintsLabel.allowedTypesText}.`;
+    case "IMAGE_TOO_LARGE":
+      return `Could not upload ${label}. Please keep the image under ${imageUploadConstraintsLabel.maxSizeText}.`;
+    case "NOT_AUTHED":
+    case "NOT_ADMIN":
+    case "PROFILE_NOT_PROVISIONED":
+    case "SUPABASE_AUTH_ERROR":
+      return "Your admin session expired. Please sign in again and retry the upload.";
+    case "UPLOAD_FAILED":
+      return `Could not upload ${label}. Please try a smaller image in ${imageUploadConstraintsLabel.allowedTypesText}.`;
+    default:
+      return codeOrMessage || `Could not upload ${label}.`;
+  }
 }
 
 function emptyNote(): ReadyPlanNote {
@@ -188,14 +242,22 @@ function createBlankPlan(): PlanRecord {
     showOnHome: false,
     priceFrom: null,
     currency: "USD",
+    links: [],
   };
 }
 
 export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
   const router = useRouter();
+  const previewRef = useRef<HTMLDivElement | null>(null);
   const [loading, setLoading] = useState(mode === "edit");
   const [saving, setSaving] = useState(false);
   const [uploadingLabel, setUploadingLabel] = useState("");
+  const [uploadPhase, setUploadPhase] = useState<"optimizing" | "uploading" | "">("");
+  const [mergeSourceItemId, setMergeSourceItemId] = useState("");
+  const [mergeTargetItemId, setMergeTargetItemId] = useState("");
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0);
+  const [mergeSourceSuggestionId, setMergeSourceSuggestionId] = useState("");
+  const [mergeTargetSuggestionId, setMergeTargetSuggestionId] = useState("");
   const [message, setMessage] = useState("");
   const [plan, setPlan] = useState<PlanRecord | null>(() => (mode === "create" ? createBlankPlan() : null));
   const [content, setContent] = useState<ReadyPlanContent | null>(() =>
@@ -255,7 +317,8 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
   }, [mode, planId]);
 
   const activeDay = content?.days[selectedDayIndex];
-  const primarySuggestion = activeDay?.suggestions[0] ?? null;
+  const safeSuggestionIndex = activeDay ? Math.min(selectedSuggestionIndex, Math.max(activeDay.suggestions.length - 1, 0)) : 0;
+  const primarySuggestion = activeDay?.suggestions[safeSuggestionIndex] ?? null;
 
   function patchPlan(patch: Partial<PlanRecord>) {
     setPlan((current) => (current ? { ...current, ...patch } : current));
@@ -301,6 +364,64 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
     });
   }
 
+  function removeSuggestion(suggestionId: string) {
+    if (!activeDay) return;
+    if (activeDay.suggestions.length <= 1) {
+      setMessage("At least one suggestion must remain.");
+      return;
+    }
+
+    const removedIndex = activeDay.suggestions.findIndex((item) => item.id === suggestionId);
+    patchActiveDay({ suggestions: activeDay.suggestions.filter((item) => item.id !== suggestionId) });
+    setSelectedSuggestionIndex((current) => Math.max(0, Math.min(current, activeDay.suggestions.length - 2, removedIndex - 1 >= 0 ? current : 0)));
+    if (mergeSourceSuggestionId === suggestionId) {
+      setMergeSourceSuggestionId("");
+      setMergeTargetSuggestionId("");
+    } else if (mergeTargetSuggestionId === suggestionId) {
+      setMergeTargetSuggestionId("");
+    }
+    setMessage("Suggestion removed.");
+  }
+
+  function startSuggestionMerge(suggestionId: string) {
+    if (!activeDay) return;
+    const firstAvailableTarget = activeDay.suggestions.find((item) => item.id !== suggestionId)?.id ?? "";
+    setMergeSourceSuggestionId(suggestionId);
+    setMergeTargetSuggestionId(firstAvailableTarget);
+    setMessage("Choose which suggestion should receive the merged content.");
+  }
+
+  function cancelSuggestionMerge() {
+    setMergeSourceSuggestionId("");
+    setMergeTargetSuggestionId("");
+    setMessage("");
+  }
+
+  function confirmSuggestionMerge() {
+    if (!activeDay || !mergeSourceSuggestionId || !mergeTargetSuggestionId) return;
+    if (mergeSourceSuggestionId === mergeTargetSuggestionId) {
+      setMessage("Choose a different suggestion to merge into.");
+      return;
+    }
+
+    const source = activeDay.suggestions.find((item) => item.id === mergeSourceSuggestionId);
+    const target = activeDay.suggestions.find((item) => item.id === mergeTargetSuggestionId);
+    if (!source || !target) {
+      setMessage("Could not find the selected suggestions to merge.");
+      return;
+    }
+
+    const nextSuggestions = activeDay.suggestions
+      .map((item) => (item.id === mergeTargetSuggestionId ? mergeSuggestions(source, item) : item))
+      .filter((item) => item.id !== mergeSourceSuggestionId);
+    const targetIndex = nextSuggestions.findIndex((item) => item.id === mergeTargetSuggestionId);
+    patchActiveDay({ suggestions: nextSuggestions });
+    setSelectedSuggestionIndex(Math.max(0, targetIndex));
+    setMergeSourceSuggestionId("");
+    setMergeTargetSuggestionId("");
+    setMessage("Suggestions merged.");
+  }
+
   function patchNote(noteId: string, patch: Partial<ReadyPlanNote>) {
     patchActiveDay({
       notes: (activeDay?.notes || []).map((item) => (item.id === noteId ? { ...item, ...patch } : item)),
@@ -330,6 +451,70 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
   function moveTimelineItem(index: number, direction: -1 | 1) {
     if (!activeDay) return;
     patchActiveDay({ timelineItems: moveInArray(activeDay.timelineItems, index, direction) });
+  }
+
+  function removeTimelineItem(itemId: string) {
+    if (!activeDay) return;
+    if (activeDay.timelineItems.length <= 1) {
+      setMessage("At least one item must remain in the day plan.");
+      return;
+    }
+
+    patchActiveDay({ timelineItems: activeDay.timelineItems.filter((row) => row.id !== itemId) });
+    if (mergeSourceItemId === itemId) {
+      setMergeSourceItemId("");
+      setMergeTargetItemId("");
+    } else if (mergeTargetItemId === itemId) {
+      setMergeTargetItemId("");
+    }
+    setMessage("Item removed.");
+  }
+
+  function startMerge(itemId: string) {
+    if (!activeDay) return;
+    const firstAvailableTarget = activeDay.timelineItems.find((item) => item.id !== itemId)?.id ?? "";
+    setMergeSourceItemId(itemId);
+    setMergeTargetItemId(firstAvailableTarget);
+    setMessage("Choose which item should receive the merged content.");
+  }
+
+  function cancelMerge() {
+    setMergeSourceItemId("");
+    setMergeTargetItemId("");
+    setMessage("");
+  }
+
+  function confirmMerge() {
+    if (!activeDay || !mergeSourceItemId || !mergeTargetItemId) return;
+    if (mergeSourceItemId === mergeTargetItemId) {
+      setMessage("Choose a different item to merge into.");
+      return;
+    }
+
+    const source = activeDay.timelineItems.find((item) => item.id === mergeSourceItemId);
+    const target = activeDay.timelineItems.find((item) => item.id === mergeTargetItemId);
+    if (!source || !target) {
+      setMessage("Could not find the selected items to merge.");
+      return;
+    }
+
+    const movedSource: ReadyPlanTimelineItem = {
+      ...source,
+      buttonLabel: "",
+      showButton: false,
+    };
+    const nextItems = activeDay.timelineItems.filter((item) => item.id !== mergeSourceItemId);
+    const targetIndex = nextItems.findIndex((item) => item.id === mergeTargetItemId);
+    if (targetIndex === -1) {
+      setMessage("Could not find where to place the merged item.");
+      return;
+    }
+
+    nextItems.splice(targetIndex + 1, 0, movedSource);
+    patchActiveDay({ timelineItems: nextItems });
+    setMergeSourceItemId("");
+    setMergeTargetItemId("");
+    setMessage("Item moved under the selected item.");
   }
 
   function moveDay(index: number, direction: -1 | 1) {
@@ -378,11 +563,15 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
     if (!file) return;
 
     setUploadingLabel(label);
+    setUploadPhase("optimizing");
+    setMessage("");
 
     try {
+      const prepared = await prepareImageForUpload(file);
+      setUploadPhase("uploading");
       const formData = new FormData();
       formData.append("bucket", "ready-plans");
-      formData.append("file", file);
+      formData.append("file", prepared.file);
 
       const response = await fetch("/api/admin/upload", {
         method: "POST",
@@ -390,15 +579,19 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data?.ok || !data?.publicUrl) {
-        throw new Error(data?.code || "UPLOAD_FAILED");
+        throw new Error(data?.message || data?.code || "UPLOAD_FAILED");
       }
 
       apply(data.publicUrl);
+      if (prepared.wasOptimized) {
+        setMessage(`${label} uploaded and optimized automatically.`);
+      }
     } catch (error: any) {
-      setMessage(error?.message || `Could not upload ${label}.`);
+      setMessage(getUploadErrorMessage(error?.message, label));
     } finally {
       event.target.value = "";
       setUploadingLabel("");
+      setUploadPhase("");
     }
   }
 
@@ -409,11 +602,15 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
     setMessage("");
 
     try {
+      const publicHtml = previewRef.current ? generatePublicPlanHtml(previewRef.current) : content.publicHtml;
       const payload = {
         ...plan,
         status: statusOverride ?? plan.status,
         daysCount: content.days.length,
-        contentJson: content,
+        contentJson: {
+          ...content,
+          publicHtml,
+        },
       };
 
       const response = await fetch(
@@ -492,7 +689,8 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
   }
 
   return (
-    <div className="overflow-hidden rounded-[40px] border border-white/10 bg-[linear-gradient(180deg,#17120d_0%,#0b0908_100%)] shadow-[0_30px_110px_rgba(0,0,0,0.42)]">
+    <div className="ready-plan-studio-shell overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,#17120d_0%,#0b0908_100%)] shadow-[0_30px_110px_rgba(0,0,0,0.42)] md:rounded-[40px]">
+      <div id="plan-preview" ref={previewRef}>
       <section className="relative overflow-hidden">
         <div className="absolute inset-0">
           <img
@@ -504,7 +702,7 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_20%,rgba(255,122,0,0.2),transparent_22%),linear-gradient(180deg,rgba(4,4,4,0.02)_0%,rgba(4,4,4,0.58)_100%)]" />
         </div>
 
-        <div className="relative p-5 md:p-8 xl:p-10">
+        <div className="relative p-5 md:p-8 xl:px-10 xl:pb-8 xl:pt-9 2xl:px-12">
           <div className="flex items-center justify-between gap-4 text-white">
             <div className="flex items-center gap-3">
               <div className="text-4xl font-black tracking-tight text-[#ff7a00]">GENE</div>
@@ -523,11 +721,11 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
             </div>
           </div>
 
-          <div className="mt-10 grid gap-6 xl:grid-cols-[1.15fr_330px] xl:items-start">
-            <div className="max-w-4xl text-white">
+          <div className="mt-10 grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start xl:gap-6 2xl:grid-cols-[minmax(0,1.12fr)_360px] 2xl:gap-7">
+            <div className="max-w-none text-white xl:pr-3 2xl:pr-5">
               <div className="flex items-start gap-3">
                 <textarea
-                  className="min-h-[150px] w-full resize-none bg-transparent text-[42px] font-semibold leading-[0.96] tracking-tight text-white outline-none md:text-[74px]"
+                  className="min-h-[150px] w-full max-w-[820px] resize-none bg-transparent text-[42px] font-semibold leading-[0.96] tracking-tight text-white outline-none md:text-[74px]"
                   value={content.hero.title}
                   onChange={(e) => patchContent({ hero: { ...content.hero, title: e.target.value } })}
                 />
@@ -535,12 +733,12 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
               </div>
 
               <textarea
-                className="mt-4 min-h-[86px] w-full max-w-2xl resize-none bg-transparent text-lg leading-8 text-white/80 outline-none"
+                className="mt-4 min-h-[86px] w-full max-w-[620px] resize-none bg-transparent text-lg leading-8 text-white/80 outline-none"
                 value={content.hero.subtitle}
                 onChange={(e) => patchContent({ hero: { ...content.hero, subtitle: e.target.value } })}
               />
 
-              <div className="mt-4 flex flex-wrap gap-2">
+              <div className="mt-4 flex flex-wrap gap-2" data-admin="true">
                 <QuickUploadChip
                   label="Hero background"
                   onFileChange={(event) =>
@@ -591,7 +789,7 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
                   disabled={saving}
                   className="rounded-[18px] bg-[linear-gradient(135deg,#ff7a00,#ffb347)] px-7 py-4 text-sm font-semibold text-white shadow-[0_0_34px_rgba(255,122,0,0.34)] transition hover:scale-[1.01] disabled:opacity-60"
                 >
-                  {content.hero.primaryCtaText || "Plan Smarter With AI"}
+                  {BOOK_NOW_LABEL}
                 </button>
                 <button
                   type="button"
@@ -601,12 +799,12 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
                   <span className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20">
                     <span className="ml-0.5 text-sm">▶</span>
                   </span>
-                  {content.hero.secondaryCtaText || "View Full Timeline"}
+                  {BOOK_NOW_LABEL}
                 </button>
               </div>
             </div>
 
-            <div className="rounded-[28px] border border-white/14 bg-[linear-gradient(180deg,rgba(255,248,239,0.95),rgba(245,231,214,0.92))] p-5 text-[#2d1e17] shadow-[0_26px_70px_rgba(0,0,0,0.24)]">
+            <div className="rounded-[28px] border border-white/14 bg-[linear-gradient(180deg,rgba(255,248,239,0.95),rgba(245,231,214,0.92))] p-5 text-[#2d1e17] shadow-[0_26px_70px_rgba(0,0,0,0.24)] xl:min-h-[470px]">
               <div className="flex items-center justify-between gap-3">
                 <input
                   className="w-full bg-transparent text-2xl font-semibold outline-none"
@@ -661,11 +859,11 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
         </div>
       </section>
 
-      <section className="grid gap-4 px-3 pb-4 md:px-4 xl:grid-cols-[188px_minmax(0,1fr)_282px]">
-        <aside className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(0,0,0,0.28))] p-4 text-white shadow-[0_20px_70px_rgba(0,0,0,0.24)]">
+      <section className="relative z-10 grid gap-4 px-2 pb-4 md:px-4 xl:-mt-2 xl:grid-cols-[168px_minmax(0,1fr)_286px] xl:items-start xl:gap-4 2xl:grid-cols-[204px_minmax(0,1fr)_324px] 2xl:gap-5">
+        <aside className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(0,0,0,0.28))] p-4 text-white shadow-[0_20px_70px_rgba(0,0,0,0.24)] xl:sticky xl:top-6 xl:p-5">
           <div className="mb-4 flex items-center justify-between">
             <div className="text-sm font-medium text-white/92">Your Journey</div>
-            <div className="flex items-center gap-2 text-white/76">
+            <div className="flex items-center gap-2 text-white/76" data-admin="true">
               <Info size={14} />
               <button type="button" onClick={addDay}>
                 <Plus size={14} />
@@ -675,39 +873,53 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
 
           <div className="space-y-3">
             {content.days.map((day, index) => (
-              <button
+              <div
                 key={day.id}
-                type="button"
-                onClick={() => setSelectedDayIndex(index)}
-                className={`flex w-full items-center gap-3 rounded-[20px] border px-3 py-3 text-left transition ${
+                className={`rounded-[20px] border px-3 py-3 transition ${
                   index === selectedDayIndex
                     ? "border-[#ff7a00]/45 bg-[#ff7a00]/10"
                     : "border-white/10 bg-white/[0.03]"
                 }`}
               >
-                <MiniImageSlot
-                  value={day.previewImage || day.heroImage}
-                  onFileChange={(event) =>
-                    onImagePick(
-                      event,
-                      (value) => patchDayAt(index, { previewImage: value }),
-                      `day ${day.dayNumber} preview image`,
-                    )
-                  }
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs uppercase tracking-[0.18em] text-[#ffbf82]">Day {day.dayNumber}</div>
-                  <div className="mt-1 truncate text-sm font-medium text-white">
-                    {day.destinationLabel || `Day ${day.dayNumber}`}
+                <button
+                  type="button"
+                  onClick={() => setSelectedDayIndex(index)}
+                  className="flex w-full items-center gap-3 text-left"
+                >
+                  <MiniImageSlot
+                    value={day.previewImage || day.heroImage}
+                    onFileChange={(event) =>
+                      onImagePick(
+                        event,
+                        (value) => patchDayAt(index, { previewImage: value }),
+                        `day ${day.dayNumber} preview image`,
+                      )
+                    }
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs uppercase tracking-[0.18em] text-[#ffbf82]">Day {day.dayNumber}</div>
+                    <div className="mt-1 truncate text-sm font-medium text-white">
+                      {day.destinationLabel || `Day ${day.dayNumber}`}
+                    </div>
+                    <div className="mt-1 truncate text-xs text-white/70">{day.countryLabel || day.title}</div>
                   </div>
-                  <div className="mt-1 truncate text-xs text-white/58">{day.countryLabel || day.title}</div>
+                  <Info size={13} className="shrink-0 text-white/72" />
+                </button>
+                <div className="mt-3 flex justify-end" data-admin="true">
+                  <button
+                    type="button"
+                    onClick={() => removeDay(index)}
+                    disabled={content.days.length <= 1}
+                    className={tinyDangerButtonClass}
+                  >
+                    Remove Day
+                  </button>
                 </div>
-                <Info size={13} className="shrink-0 text-white/64" />
-              </button>
+              </div>
             ))}
           </div>
 
-          <div className="mt-4 flex gap-2">
+          <div className="mt-4 flex gap-2" data-admin="true">
             <button type="button" onClick={() => moveDay(selectedDayIndex, -1)} disabled={selectedDayIndex === 0} className={tinyDarkButtonClass}>
               Up
             </button>
@@ -724,8 +936,8 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
           </button>
         </aside>
 
-        <div className="space-y-4">
-          <section className="rounded-[32px] border border-white/12 bg-[linear-gradient(180deg,rgba(255,248,239,0.98),rgba(245,232,218,0.96))] p-5 text-[#2d1d16] shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
+        <div className="space-y-4 xl:space-y-5">
+          <section className="rounded-[32px] border border-white/12 bg-[linear-gradient(180deg,rgba(255,248,239,0.98),rgba(245,232,218,0.96))] p-5 text-[#2d1d16] shadow-[0_24px_80px_rgba(0,0,0,0.22)] xl:min-h-[500px] xl:p-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-3">
@@ -805,7 +1017,7 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
             </div>
           </section>
 
-          <section className="rounded-[32px] border border-white/12 bg-[linear-gradient(180deg,rgba(255,248,239,0.98),rgba(245,232,218,0.96))] p-5 text-[#2d1d16] shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
+          <section className="rounded-[32px] border border-white/12 bg-[linear-gradient(180deg,rgba(255,248,239,0.98),rgba(245,232,218,0.96))] p-5 text-[#2d1d16] shadow-[0_24px_80px_rgba(0,0,0,0.22)] xl:p-6">
             <div className="mb-5 flex items-center gap-2">
               <h3 className="text-3xl font-semibold">Today&apos;s Plan</h3>
               <Info size={16} className="text-[#7b6454]" />
@@ -815,8 +1027,8 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
               {activeDay.timelineItems.map((item, index) => {
                 const Icon = timelineIcon(item.type);
                 return (
-                  <div key={item.id} className="grid gap-3 md:grid-cols-[72px_138px_minmax(0,1fr)] md:items-start">
-                    <div className="pt-5 text-center text-xs leading-5 text-[#6a5547]">
+                  <div key={item.id} className="grid gap-3 md:grid-cols-[62px_116px_minmax(0,1fr)] md:items-start 2xl:grid-cols-[72px_138px_minmax(0,1fr)]">
+                    <div className="pt-5 text-center text-xs font-medium leading-5 text-[#4f3c2f]">
                       <input
                         className="w-full bg-transparent text-center font-medium outline-none"
                         value={item.time ?? ""}
@@ -829,15 +1041,12 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
                       <SmallImageSlot
                         value={item.imageUrl}
                         onFileChange={(event) => onImagePick(event, (value) => patchTimelineItem(item.id, { imageUrl: value }), "timeline item image")}
+                        onRemove={() => patchTimelineItem(item.id, { imageUrl: "" })}
                       />
-                      <div className="flex justify-center gap-2">
-                        <button type="button" onClick={() => moveTimelineItem(index, -1)} disabled={index === 0} className={tinyCreamButtonClass}>↑</button>
-                        <button type="button" onClick={() => moveTimelineItem(index, 1)} disabled={index === activeDay.timelineItems.length - 1} className={tinyCreamButtonClass}>↓</button>
-                      </div>
                     </div>
 
-                    <div className="space-y-2 rounded-[20px] border border-black/8 bg-white/45 p-3">
-                      <div className="flex items-center gap-2">
+                    <div className="min-w-0 space-y-3 rounded-[20px] border border-black/8 bg-white/78 p-3 shadow-[0_10px_24px_rgba(81,55,33,0.08)]">
+                      <div className="flex min-w-0 items-center gap-2">
                         <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#ff7a00]/12 text-[#ff7a00]">
                           <Icon size={15} />
                         </span>
@@ -850,7 +1059,7 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
                         <Info size={15} className="text-[#7b6454]" />
                       </div>
 
-                      <div className="grid gap-2 lg:grid-cols-[120px_140px_1fr_120px]">
+                      <div className="grid gap-2 xl:grid-cols-2 2xl:grid-cols-[120px_140px_minmax(0,1fr)_120px]">
                         <select
                           className={softInputClass}
                           value={item.type}
@@ -882,40 +1091,109 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
                         />
                       </div>
 
-                      <div className="grid gap-2 lg:grid-cols-[1fr_150px_150px_120px]">
-                        <input
-                          className={softInputClass}
-                          value={item.deeplink ?? ""}
-                          placeholder="Add Affiliate Link"
-                          onChange={(e) => patchTimelineItem(item.id, { deeplink: e.target.value })}
-                        />
-                        <input
-                          className={softInputClass}
-                          value={item.buttonLabel ?? ""}
-                          placeholder="Button label"
-                          onChange={(e) => patchTimelineItem(item.id, { buttonLabel: e.target.value })}
-                        />
+                      <div className="grid gap-2 2xl:grid-cols-[minmax(180px,1fr)_150px]">
+                        <div className="space-y-1">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6a4830]">
+                            Affiliate Link (Admin only)
+                          </div>
+                          <input
+                            className={softInputClass}
+                            value={item.deeplink ?? ""}
+                            placeholder="Hidden backend URL for this item's Book Now button"
+                            onChange={(e) => patchTimelineItem(item.id, { deeplink: e.target.value })}
+                          />
+                        </div>
                         <input
                           className={softInputClass}
                           value={item.status ?? ""}
                           placeholder="Status"
                           onChange={(e) => patchTimelineItem(item.id, { status: e.target.value })}
                         />
-                        <button
-                          type="button"
-                          onClick={() => patchActiveDay({ timelineItems: activeDay.timelineItems.filter((row) => row.id !== item.id) })}
-                          className={tinyDangerButtonClass}
-                        >
-                          Remove
-                        </button>
                       </div>
+
+                      <div className="flex flex-col gap-2 rounded-[14px] border border-black/8 bg-white/62 p-3 sm:flex-row sm:items-center sm:justify-between" data-admin="true">
+                        <label className="inline-flex min-w-0 items-center gap-2 text-sm font-medium text-[#4b372a]">
+                          <input
+                            type="checkbox"
+                            checked={item.buttonLabel !== ""}
+                            onChange={(e) =>
+                              patchTimelineItem(item.id, {
+                                buttonLabel: e.target.checked ? BOOK_NOW_LABEL : "",
+                                showButton: e.target.checked,
+                              })
+                            }
+                            className="h-4 w-4 rounded border-black/20 accent-[#ff7a00]"
+                          />
+                          <span>Show Book Now button</span>
+                        </label>
+                        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                          <button type="button" onClick={() => moveTimelineItem(index, -1)} disabled={index === 0} className={tinyCreamButtonClass}>
+                            Move up
+                          </button>
+                          <button type="button" onClick={() => moveTimelineItem(index, 1)} disabled={index === activeDay.timelineItems.length - 1} className={tinyCreamButtonClass}>
+                            Move down
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => startMerge(item.id)}
+                            disabled={activeDay.timelineItems.length <= 1}
+                            className={tinyCreamButtonClass}
+                          >
+                            Merge
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeTimelineItem(item.id)}
+                            disabled={activeDay.timelineItems.length <= 1}
+                            className={tinyDangerButtonClass}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+
+                      {mergeSourceItemId === item.id ? (
+                        <div className="rounded-[14px] border border-[#ff7a00]/20 bg-[#fff7ef] p-3" data-admin="true">
+                          <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#a55b17]">
+                            Merge Into Another Item
+                          </div>
+                          <div className="flex flex-col gap-2 md:flex-row">
+                            <select
+                              value={mergeTargetItemId}
+                              onChange={(e) => setMergeTargetItemId(e.target.value)}
+                              className="min-w-0 flex-1 rounded-[12px] border border-[#e4c3a5] bg-white px-3 py-2 text-sm text-[#2d1d16] outline-none"
+                            >
+                              {activeDay.timelineItems
+                                .filter((candidate) => candidate.id !== item.id)
+                                .map((candidate, candidateIndex) => (
+                                  <option key={candidate.id} value={candidate.id}>
+                                    {candidate.title?.trim() || `Item ${candidateIndex + 1}`}
+                                  </option>
+                                ))}
+                            </select>
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={confirmMerge}
+                                disabled={!mergeTargetItemId}
+                                className="rounded-[12px] bg-[#ff7a00] px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-white disabled:opacity-50"
+                              >
+                                Confirm
+                              </button>
+                              <button type="button" onClick={cancelMerge} className={tinyCreamButtonClass}>
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 );
               })}
             </div>
 
-            <div className="mt-5">
+            <div className="mt-5" data-admin="true">
               <button
                 type="button"
                 onClick={() => patchActiveDay({ timelineItems: [...activeDay.timelineItems, emptyTimelineItem()] })}
@@ -955,8 +1233,8 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
           </section>
         </div>
 
-        <div className="space-y-4">
-          <section className="rounded-[28px] border border-white/12 bg-[linear-gradient(180deg,rgba(255,248,239,0.98),rgba(245,232,218,0.96))] p-5 text-[#2d1d16] shadow-[0_24px_80px_rgba(0,0,0,0.2)]">
+        <div className="space-y-4 xl:sticky xl:top-6 xl:self-start xl:space-y-5">
+          <section className="rounded-[28px] border border-white/12 bg-[linear-gradient(180deg,rgba(255,248,239,0.98),rgba(245,232,218,0.96))] p-5 text-[#2d1d16] shadow-[0_24px_80px_rgba(0,0,0,0.2)] xl:min-h-[430px]">
             <div className="mb-3 flex items-center gap-2">
               <h3 className="text-[32px] font-semibold">AI Suggestions</h3>
               <Sparkles size={16} className="text-[#ff7a00]" />
@@ -966,19 +1244,54 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
 
             <div className="mt-4 rounded-[20px] border border-black/8 bg-white/45 p-3">
               <div className="mb-3 flex items-center justify-between text-[#765e4e]">
-                <button type="button" className={arrowPillClass}>
+                <button
+                  type="button"
+                  className={arrowPillClass}
+                  onClick={() => setSelectedSuggestionIndex((current) => Math.max(0, current - 1))}
+                  disabled={safeSuggestionIndex === 0}
+                >
                   <ChevronLeft size={15} />
                 </button>
                 <button
                   type="button"
-                  onClick={() => patchActiveDay({ suggestions: [...activeDay.suggestions, emptySuggestion()] })}
+                  onClick={() => {
+                    patchActiveDay({ suggestions: [...activeDay.suggestions, emptySuggestion()] });
+                    setSelectedSuggestionIndex(activeDay.suggestions.length);
+                  }}
                   className={arrowPillClass}
                 >
                   <Plus size={18} />
                 </button>
-                <button type="button" className={arrowPillClass}>
+                <button
+                  type="button"
+                  className={arrowPillClass}
+                  onClick={() => setSelectedSuggestionIndex((current) => Math.min(activeDay.suggestions.length - 1, current + 1))}
+                  disabled={safeSuggestionIndex >= activeDay.suggestions.length - 1}
+                >
                   <ChevronRight size={15} />
                 </button>
+              </div>
+
+              <div className="mb-3 flex items-center justify-between gap-3 text-xs font-semibold uppercase tracking-[0.16em] text-[#6a4830]">
+                <span>{`Suggestion ${safeSuggestionIndex + 1} of ${activeDay.suggestions.length}`}</span>
+                <div className="flex flex-wrap items-center gap-2" data-admin="true">
+                  <button
+                    type="button"
+                    onClick={() => primarySuggestion && startSuggestionMerge(primarySuggestion.id)}
+                    disabled={!primarySuggestion || activeDay.suggestions.length <= 1}
+                    className={tinyCreamButtonClass}
+                  >
+                    Merge
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => primarySuggestion && removeSuggestion(primarySuggestion.id)}
+                    disabled={!primarySuggestion || activeDay.suggestions.length <= 1}
+                    className={tinyDangerButtonClass}
+                  >
+                    Remove
+                  </button>
+                </div>
               </div>
 
               <LargeImageSlot
@@ -1027,13 +1340,49 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
                 </div>
               </div>
 
+              {primarySuggestion && mergeSourceSuggestionId === primarySuggestion.id ? (
+                <div className="mt-4 rounded-[14px] border border-[#ff7a00]/20 bg-[#fff7ef] p-3" data-admin="true">
+                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#a55b17]">
+                    Merge Into Another Suggestion
+                  </div>
+                  <div className="flex flex-col gap-2 md:flex-row">
+                    <select
+                      value={mergeTargetSuggestionId}
+                      onChange={(e) => setMergeTargetSuggestionId(e.target.value)}
+                      className="min-w-0 flex-1 rounded-[12px] border border-[#e4c3a5] bg-white px-3 py-2 text-sm text-[#2d1d16] outline-none"
+                    >
+                      {activeDay.suggestions
+                        .filter((candidate) => candidate.id !== primarySuggestion.id)
+                        .map((candidate, candidateIndex) => (
+                          <option key={candidate.id} value={candidate.id}>
+                            {candidate.title?.trim() || `Suggestion ${candidateIndex + 1}`}
+                          </option>
+                        ))}
+                    </select>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={confirmSuggestionMerge}
+                        disabled={!mergeTargetSuggestionId}
+                        className="rounded-[12px] bg-[#ff7a00] px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-white disabled:opacity-50"
+                      >
+                        Confirm
+                      </button>
+                      <button type="button" onClick={cancelSuggestionMerge} className={tinyCreamButtonClass}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
               <button type="button" className="mt-4 w-full rounded-[14px] bg-[#ff7a00] px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(255,122,0,0.22)]">
-                {primarySuggestion?.ctaText || "Add to Plan"}
+                {BOOK_NOW_LABEL}
               </button>
             </div>
           </section>
 
-          <section className="rounded-[28px] border border-white/12 bg-[linear-gradient(180deg,rgba(255,248,239,0.98),rgba(245,232,218,0.96))] p-5 text-[#2d1d16] shadow-[0_24px_80px_rgba(0,0,0,0.2)]">
+          <section className="rounded-[28px] border border-white/12 bg-[linear-gradient(180deg,rgba(255,248,239,0.98),rgba(245,232,218,0.96))] p-5 text-[#2d1d16] shadow-[0_24px_80px_rgba(0,0,0,0.2)] xl:min-h-[286px]">
             <div className="mb-3 flex items-center gap-2">
               <h3 className="text-[32px] font-semibold">Cinematic Story</h3>
               <Sparkles size={16} className="text-[#ff7a00]" />
@@ -1066,7 +1415,7 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
             </button>
           </section>
 
-          <section className="rounded-[28px] border border-white/12 bg-[linear-gradient(180deg,rgba(255,248,239,0.98),rgba(245,232,218,0.96))] p-5 text-[#2d1d16] shadow-[0_24px_80px_rgba(0,0,0,0.2)]">
+          <section className="rounded-[28px] border border-white/12 bg-[linear-gradient(180deg,rgba(255,248,239,0.98),rgba(245,232,218,0.96))] p-5 text-[#2d1d16] shadow-[0_24px_80px_rgba(0,0,0,0.2)] xl:min-h-[250px]">
             <div className="mb-4 flex items-center gap-2">
               <h3 className="text-[32px] font-semibold">Day Summary</h3>
               <Info size={15} className="text-[#7b6454]" />
@@ -1133,14 +1482,14 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
                 onChange={(e) => patchContent({ footer: { ...content.footer, subtitle: e.target.value } })}
               />
             </div>
-            <div className="space-y-3">
+            <div className="space-y-3" data-admin="true">
               <button
                 type="button"
                 onClick={() => saveAsStatus("PUBLISHED")}
                 disabled={saving}
                 className="w-full rounded-[18px] bg-[linear-gradient(135deg,#ff7a00,#ffb347)] px-7 py-5 text-base font-semibold text-white shadow-[0_0_36px_rgba(255,122,0,0.34)] transition hover:scale-[1.01] disabled:opacity-60"
               >
-                {content.footer.ctaText || "PLAN SMARTER WITH AI"}
+                {BOOK_NOW_LABEL.toUpperCase()}
               </button>
               <div className="flex gap-2">
                 <button type="button" onClick={() => saveAsStatus("DRAFT")} disabled={saving} className={ghostButtonClass}>
@@ -1154,15 +1503,28 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
             <SmallBannerSlot onFileChange={(event) => onImagePick(event, (value) => patchContent({ footer: { ...content.footer, backgroundImage: value } }), "footer background")} />
           </div>
 
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3" data-admin="true">
             <button type="button" onClick={() => router.push("/admin/ready-plans")} className={ghostButtonClass}>
               Back to Ready Plans
-            </button>
-            {message ? <div className="text-sm text-white/78">{message}</div> : null}
-            {uploadingLabel ? <div className="text-sm text-[#ffd1a3]">Uploading {uploadingLabel}...</div> : null}
+              </button>
+              {message ? <div className="text-sm text-white/78">{message}</div> : null}
+             {uploadingLabel ? (
+               <div className="flex min-w-[260px] items-center gap-3 text-sm text-[#ffd1a3]">
+                 <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-[#ffd1a3]/25 border-t-[#ff7a00]" />
+                 <div className="min-w-0 flex-1">
+                   <div>
+                     {uploadPhase === "optimizing" ? `Optimizing ${uploadingLabel}...` : `Uploading ${uploadingLabel}...`}
+                   </div>
+                   <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
+                     <div className="h-full w-1/2 animate-pulse rounded-full bg-[#ff7a00]" />
+                   </div>
+                 </div>
+               </div>
+             ) : null}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
     </div>
   );
 }
@@ -1172,17 +1534,17 @@ const ghostButtonClass =
 const dangerButtonClass =
   "rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs uppercase tracking-[0.14em] text-red-200 transition hover:bg-red-500/15 disabled:opacity-40";
 const softInputClass =
-  "w-full rounded-[12px] border border-black/8 bg-white/70 px-3 py-2 text-sm text-[#2d1d16] outline-none placeholder:text-[#9a8474]";
+  "w-full rounded-[12px] border border-black/10 bg-white/88 px-3 py-2 text-sm font-medium text-[#2d1d16] outline-none placeholder:text-[#826857]";
 const softTextareaClass =
-  "min-h-[66px] w-full rounded-[12px] border border-black/8 bg-white/70 px-3 py-2 text-sm text-[#2d1d16] outline-none placeholder:text-[#9a8474]";
+  "min-h-[66px] w-full rounded-[12px] border border-black/10 bg-white/88 px-3 py-2 text-sm text-[#2d1d16] outline-none placeholder:text-[#826857]";
 const tinyDarkButtonClass =
   "rounded-[12px] border border-white/12 bg-white/[0.06] px-3 py-2 text-xs text-white/82 disabled:opacity-40";
 const tinyDangerButtonClass =
-  "rounded-[10px] border border-red-500/25 bg-red-500/10 px-2.5 py-1 text-xs text-red-200 disabled:opacity-40";
+  "rounded-[10px] border border-red-500/25 bg-red-500/10 px-2.5 py-1 text-xs font-medium text-red-200 disabled:opacity-40";
 const tinyCreamButtonClass =
-  "rounded-[10px] border border-black/8 bg-white/70 px-2 py-1 text-xs text-[#5c4739] disabled:opacity-40";
+  "rounded-[10px] border border-black/10 bg-white/88 px-2.5 py-1.5 text-xs font-medium text-[#4b372a] disabled:opacity-40";
 const arrowPillClass =
-  "flex h-9 w-9 items-center justify-center rounded-full border border-black/10 bg-white/70 text-[#5f4a3b]";
+  "flex h-9 w-9 items-center justify-center rounded-full border border-black/10 bg-white/88 text-[#5f4a3b]";
 
 function InlinePillInput({
   value,
@@ -1220,15 +1582,15 @@ function InlineIconInput({
   onChange: (value: string) => void;
 }) {
   return (
-    <div className="inline-flex items-center gap-2 rounded-[14px] border border-black/8 bg-white/65 px-3 py-2.5">
+    <div className="inline-flex items-center gap-2 rounded-[14px] border border-black/10 bg-white/88 px-3 py-2.5">
       {icon}
       <input
-        className="min-w-[120px] bg-transparent text-sm text-[#2d1d16] outline-none placeholder:text-[#9a8474]"
+        className="min-w-[120px] bg-transparent text-sm font-medium text-[#2d1d16] outline-none placeholder:text-[#826857]"
         value={value ?? ""}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
       />
-      <Info size={14} className="text-[#7a6454]" />
+      <Info size={14} className="text-[#5c4738]" />
     </div>
   );
 }
@@ -1245,7 +1607,7 @@ function QuickUploadChip({
   return (
     <>
       <input id={inputId} type="file" accept="image/*" onChange={onFileChange} className="hidden" />
-      <label htmlFor={inputId} className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-white/15 bg-white/[0.06] px-3 py-2 text-xs uppercase tracking-[0.18em] text-white/76">
+      <label htmlFor={inputId} className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-white/20 bg-white/[0.1] px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/90">
         <Plus size={12} />
         {label}
       </label>
@@ -1294,18 +1656,30 @@ function LargeImageSlot({
 function SmallImageSlot({
   value,
   onFileChange,
+  onRemove,
 }: {
   value?: string;
   onFileChange: (event: React.ChangeEvent<HTMLInputElement>) => void | Promise<void>;
+  onRemove?: () => void;
 }) {
   const inputId = useId();
   return (
-    <>
+    <div className="relative">
       <input id={inputId} type="file" accept="image/*" onChange={onFileChange} className="hidden" />
+      {value && onRemove ? (
+        <button
+          type="button"
+          aria-label="Remove image"
+          onClick={onRemove}
+          className="absolute right-2 top-2 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full border border-black/12 bg-white/90 text-[#2d1d16] shadow-[0_10px_20px_rgba(0,0,0,0.14)] transition hover:scale-105 hover:bg-white"
+        >
+          <X size={14} />
+        </button>
+      ) : null}
       <label htmlFor={inputId} className="flex h-[110px] cursor-pointer items-center justify-center overflow-hidden rounded-[18px] border border-dashed border-black/18 bg-[radial-gradient(circle_at_50%_32%,#fffdf9,#f7ecdf)]">
         {value ? <img src={value} alt="" className="h-full w-full object-cover" /> : <Plus size={24} className="text-[#4b3a2d]" />}
       </label>
-    </>
+    </div>
   );
 }
 
@@ -1334,12 +1708,12 @@ function SmallBannerSlot({
 }) {
   const inputId = useId();
   return (
-    <>
+    <div data-admin="true">
       <input id={inputId} type="file" accept="image/*" onChange={onFileChange} className="hidden" />
       <label htmlFor={inputId} className="flex h-[96px] cursor-pointer items-center justify-center rounded-[18px] border border-dashed border-[#d2bcaa] bg-[linear-gradient(180deg,#fffaf4,#f6eadb)] text-[#4b3a2d]">
         <Plus size={26} />
       </label>
-    </>
+    </div>
   );
 }
 
