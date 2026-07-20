@@ -23,6 +23,11 @@ export function normalizeString(value: unknown, fallback = "") {
 export const adminImageBucketSchema = z.enum(["ready-plans", "destinations", "offers", "events"]);
 
 export const imageUploadConstraints = {
-  maxBytes: 6 * 1024 * 1024,
+  maxBytes: 12 * 1024 * 1024,
   allowedTypes: ["image/jpeg", "image/png", "image/webp", "image/avif"] as const,
+};
+
+export const imageUploadConstraintsLabel = {
+  maxSizeText: "12 MB",
+  allowedTypesText: "JPG, PNG, WebP, or AVIF",
 };
