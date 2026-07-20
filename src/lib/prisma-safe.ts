@@ -14,6 +14,26 @@ export function isMissingTableError(error: unknown) {
   );
 }
 
+export function isSchemaDriftError(error: unknown) {
+  if (typeof error !== "object" || error === null) return false;
+
+  const code = "code" in error ? String((error as { code?: unknown }).code ?? "") : "";
+  const message = "message" in error ? String((error as { message?: unknown }).message ?? "") : "";
+  const metaMessage =
+    "meta" in error && typeof (error as { meta?: unknown }).meta === "object" && (error as { meta?: unknown }).meta !== null
+      ? String(((error as { meta?: { message?: unknown } }).meta?.message ?? ""))
+      : "";
+  const combinedMessage = `${message} ${metaMessage}`;
+
+  return (
+    code === "P2010" ||
+    combinedMessage.includes("does not exist") ||
+    combinedMessage.includes("column") ||
+    combinedMessage.includes("relation") ||
+    combinedMessage.includes("type \"public.")
+  );
+}
+
 export function isDatabaseUnavailableError(error: unknown) {
   if (typeof error !== "object" || error === null) return false;
 
@@ -58,7 +78,7 @@ export async function tableExists(tableName: string) {
     tableExistsCache.set(tableName, exists);
     return exists;
   } catch (error) {
-    if (isMissingTableError(error) || isDatabaseUnavailableError(error)) {
+    if (isMissingTableError(error) || isSchemaDriftError(error) || isDatabaseUnavailableError(error)) {
       tableExistsCache.set(tableName, false);
       return false;
     }
@@ -85,7 +105,7 @@ export async function getTableColumns(tableName: string) {
     tableColumnsCache.set(tableName, columns);
     return columns;
   } catch (error) {
-    if (isMissingTableError(error) || isDatabaseUnavailableError(error)) {
+    if (isMissingTableError(error) || isSchemaDriftError(error) || isDatabaseUnavailableError(error)) {
       tableColumnsCache.set(tableName, []);
       return [];
     }
@@ -105,7 +125,7 @@ export async function withExistingTable<T>(
   try {
     return await query();
   } catch (error) {
-    if (isMissingTableError(error) || isDatabaseUnavailableError(error)) {
+    if (isMissingTableError(error) || isSchemaDriftError(error) || isDatabaseUnavailableError(error)) {
       tableExistsCache.set(tableName, false);
       return fallback;
     }
@@ -120,7 +140,7 @@ export async function withDatabaseFallback<T>(
   try {
     return await query();
   } catch (error) {
-    if (isMissingTableError(error) || isDatabaseUnavailableError(error)) {
+    if (isMissingTableError(error) || isSchemaDriftError(error) || isDatabaseUnavailableError(error)) {
       return fallback;
     }
     throw error;
