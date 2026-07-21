@@ -603,8 +603,10 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
 
     try {
       const publicHtml = previewRef.current ? generatePublicPlanHtml(previewRef.current) : content.publicHtml;
+      const savedTitle = content.hero.title.trim() || plan.title;
       const payload = {
         ...plan,
+        title: savedTitle,
         status: statusOverride ?? plan.status,
         daysCount: content.days.length,
         contentJson: {
@@ -705,8 +707,7 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
         <div className="relative p-5 md:p-8 xl:px-10 xl:pb-8 xl:pt-9 2xl:px-12">
           <div className="flex items-center justify-between gap-4 text-white">
             <div className="flex items-center gap-3">
-              <div className="text-4xl font-black tracking-tight text-[#ff7a00]">GENE</div>
-              <div className="text-xs uppercase tracking-[0.34em] text-white/78">TRAVEL</div>
+              <img src="/images/logo.png" alt="Gene Travel" className="h-auto w-[132px] object-contain md:w-[190px]" />
             </div>
             <div className="flex items-center gap-4 text-sm text-white/82">
               <div className="inline-flex items-center gap-2">
@@ -727,7 +728,10 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
                 <textarea
                   className="min-h-[150px] w-full max-w-[820px] resize-none bg-transparent text-[42px] font-semibold leading-[0.96] tracking-tight text-white outline-none md:text-[74px]"
                   value={content.hero.title}
-                  onChange={(e) => patchContent({ hero: { ...content.hero, title: e.target.value } })}
+                  onChange={(e) => {
+                    patchContent({ hero: { ...content.hero, title: e.target.value } });
+                    patchPlan({ title: e.target.value });
+                  }}
                 />
                 <Info size={18} className="mt-4 shrink-0 text-white/76" />
               </div>
