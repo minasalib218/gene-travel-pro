@@ -1,12 +1,16 @@
 // src/lib/supabase/server.ts
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { getSupabaseAnonKey, getSupabaseUrl } from "@/lib/env";
 
 export function createRouteClient() {
   const cookieStore = cookies();
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const url = getSupabaseUrl();
+  const anon = getSupabaseAnonKey();
+  if (!url || !anon) {
+    throw new Error("Missing Supabase client environment variables");
+  }
 
   return createServerClient(url, anon, {
     cookies: {
