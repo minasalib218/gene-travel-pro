@@ -15,6 +15,7 @@ export type ReadyPlanTimelineItem = {
   imageUrl?: string;
   deeplink?: string;
   buttonLabel?: string;
+  showButton?: boolean;
   price?: string;
   people?: string;
 };
@@ -73,6 +74,7 @@ export type ReadyPlanDayContent = {
 };
 
 export type ReadyPlanContent = {
+  publicHtml?: string;
   hero: {
     backgroundImage?: string;
     title: string;
@@ -104,6 +106,8 @@ export type ReadyPlanContent = {
 function id(prefix: string, index: number) {
   return `${prefix}-${index + 1}`;
 }
+
+const BOOK_NOW_LABEL = "Book Now";
 
 function asString(value: unknown, fallback = "") {
   return typeof value === "string" ? value : fallback;
@@ -178,7 +182,8 @@ export function buildDefaultReadyPlanContent(plan: {
             description: asString(row.note, "Add more detail from the admin page."),
             imageUrl: asString(row.imageUrl, plan.heroImage || plan.coverImage || "/bg/home-hero.png"),
             deeplink: asString(row.deeplink),
-            buttonLabel: asString(row.buttonLabel, "Book Now"),
+            buttonLabel: asString(row.buttonLabel, BOOK_NOW_LABEL),
+            showButton: row.showButton === false ? false : asString(row.buttonLabel, BOOK_NOW_LABEL) !== "",
             badge: type === "restaurant" ? "Dining" : "Ready Plan",
             status: "Confirmed",
             price: "",
@@ -215,6 +220,7 @@ export function buildDefaultReadyPlanContent(plan: {
 
   return normalizeReadyPlanContent(
     {
+      publicHtml: existing?.publicHtml,
       hero: {
         backgroundImage: plan.heroImage || plan.coverImage || "/bg/home-hero.png",
         title: "Your Cinematic Ready Plan",
@@ -274,6 +280,7 @@ export function normalizeReadyPlanContent(
   const days = Array.isArray(root.days) ? root.days : [];
 
   return {
+    publicHtml: asString(root.publicHtml),
     hero: {
       backgroundImage: asString(hero.backgroundImage, plan?.heroImage || plan?.coverImage || "/bg/home-hero.png"),
       title: asString(hero.title, "Your Cinematic Ready Plan"),
@@ -285,9 +292,9 @@ export function normalizeReadyPlanContent(
         const stat = asObject(item);
         return { label: asString(stat.label), value: asString(stat.value) };
       }).filter((item) => item.label || item.value).slice(0, 5),
-      primaryCtaText: asString(hero.primaryCtaText, "Plan Smarter With AI"),
+      primaryCtaText: BOOK_NOW_LABEL,
       primaryCtaHref: asString(hero.primaryCtaHref, "/ai-planner"),
-      secondaryCtaText: asString(hero.secondaryCtaText, "View Full Timeline"),
+      secondaryCtaText: BOOK_NOW_LABEL,
     },
     journeyOverview: {
       title: asString(overview.title, "Journey Overview"),
@@ -336,7 +343,8 @@ export function normalizeReadyPlanContent(
             description: asString(entry.description),
             imageUrl: asString(entry.imageUrl, plan?.heroImage || plan?.coverImage || "/bg/home-hero.png"),
             deeplink: asString(entry.deeplink),
-            buttonLabel: asString(entry.buttonLabel, "Book Now"),
+            buttonLabel: entry.showButton === false ? "" : asString(entry.buttonLabel, BOOK_NOW_LABEL),
+            showButton: entry.showButton === false ? false : asString(entry.buttonLabel, BOOK_NOW_LABEL) !== "",
             price: asString(entry.price),
             people: asString(entry.people),
           };
@@ -352,7 +360,7 @@ export function normalizeReadyPlanContent(
             matchScore: asString(entry.matchScore, "Highly Recommended"),
             price: asString(entry.price),
             duration: asString(entry.duration),
-            ctaText: asString(entry.ctaText, "Add to Plan"),
+            ctaText: BOOK_NOW_LABEL,
           };
         }),
         story: {
@@ -385,7 +393,7 @@ export function normalizeReadyPlanContent(
       backgroundImage: asString(footer.backgroundImage, plan?.coverImage || plan?.heroImage || "/bg/home-hero.png"),
       title: asString(footer.title, "Your journey, but smarter."),
       subtitle: asString(footer.subtitle, "Let AI handle the details while you focus on the memories."),
-      ctaText: asString(footer.ctaText, "Plan Smarter With AI"),
+      ctaText: BOOK_NOW_LABEL,
       ctaHref: asString(footer.ctaHref, "/ai-planner"),
     },
   };
@@ -407,7 +415,8 @@ export function contentToDaysJson(content: ReadyPlanContent) {
           : item.type,
       imageUrl: item.imageUrl || "",
       deeplink: item.deeplink || "",
-      buttonLabel: item.buttonLabel || "Book Now",
+      buttonLabel: item.buttonLabel || "",
+      showButton: item.buttonLabel !== "",
     })),
   }));
 }
