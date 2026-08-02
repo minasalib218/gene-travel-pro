@@ -510,7 +510,7 @@ model ReadyPlan {
 }
 
 model Destination {
-  id            String   @id @default(cuid())
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   title         String
   slug          String   @unique
   imageUrl      String?
