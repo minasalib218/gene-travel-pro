@@ -1,13 +1,16 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getPlanRules, type GenePlanType } from "@/lib/credits/planRules";
+import { isDatabaseUnavailableError, isSchemaDriftError, tableExists } from "@/lib/prisma-safe";
 
 function isMissingSettingsTableError(error: unknown) {
   return (
     typeof error === "object" &&
     error !== null &&
     "code" in error &&
-    (((error as any).code === "P2021") || ((error as any).code === "P2022"))
+    ((error as any).code === "P2021" ||
+      (error as any).code === "P2022" ||
+      isSchemaDriftError(error))
   );
 }
 
@@ -54,18 +57,22 @@ export const DEFAULT_PLAN_CONFIGS: PlanConfigs = {
 
 export async function getAdminSetting<T>(key: string, fallback: T): Promise<T> {
   try {
+    if (!(await tableExists("admin_settings"))) return fallback;
+
     const rows = await prisma.$queryRaw<Array<{ value: unknown }>>(
       Prisma.sql`SELECT value FROM admin_settings WHERE key = ${key} LIMIT 1`,
     );
     return (rows?.[0]?.value as T | undefined) ?? fallback;
   } catch (error) {
-    if (isMissingSettingsTableError(error)) return fallback;
+    if (isMissingSettingsTableError(error) || isDatabaseUnavailableError(error)) return fallback;
     throw error;
   }
 }
 
 export async function setAdminSetting<T>(key: string, value: T) {
   try {
+    if (!(await tableExists("admin_settings"))) return null;
+
     const serialized = JSON.stringify(value ?? {});
     await prisma.$executeRaw(
       Prisma.sql`
@@ -77,7 +84,7 @@ export async function setAdminSetting<T>(key: string, value: T) {
     );
     return { key, value };
   } catch (error) {
-    if (isMissingSettingsTableError(error)) {
+    if (isMissingSettingsTableError(error) || isDatabaseUnavailableError(error)) {
       return null;
     }
     throw error;

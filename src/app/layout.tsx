@@ -1,5 +1,5 @@
 import "./globals.css";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import Script from "next/script";
@@ -27,8 +27,6 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
 };
-
-export const dynamic = "force-dynamic";
 
 export default function RootLayout({children}:{children:ReactNode}){
   const travelpayoutsTrsId = process.env.TRAVELPAYOUTS_TRS_ID || "142507";
@@ -59,7 +57,9 @@ export default function RootLayout({children}:{children:ReactNode}){
         <LanguageProvider>
           <MetaPixel />
           <GoogleAnalytics />
-          <AnalyticsRuntime />
+          <Suspense fallback={null}>
+            <AnalyticsRuntime />
+          </Suspense>
           {children}
         </LanguageProvider>
       </body>

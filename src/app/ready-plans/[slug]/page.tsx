@@ -5,6 +5,8 @@ import { buildDefaultReadyPlanContent, type ReadyPlanContent } from "@/lib/ready
 import { sanitizeReadyPlanContentForPublic } from "@/lib/ready-plan-public";
 import { isDatabaseUnavailableError, tableExists, withDatabaseFallback } from "@/lib/prisma-safe";
 
+export const revalidate = 60;
+
 function getBookableItemIds(content: ReadyPlanContent, dayRecords?: any[] | null) {
   const ids = new Set<string>();
 

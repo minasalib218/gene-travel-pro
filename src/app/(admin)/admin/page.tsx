@@ -5,6 +5,16 @@ import { AdminStatCard } from "@/components/admin/AdminStatCard";
 import { AdminCard } from "@/components/admin/AdminCard";
 import { withExistingTable } from "@/lib/prisma-safe";
 
+async function countActivePasses() {
+  const rows = await prisma.$queryRaw<Array<{ count: bigint | number }>>`
+    SELECT COUNT(*) AS count
+    FROM passes
+    WHERE status::text = 'ACTIVE'
+  `;
+
+  return Number(rows?.[0]?.count ?? 0);
+}
+
 function QuickLink({
   href,
   label,
@@ -27,51 +37,69 @@ function QuickLink({
 }
 
 export default async function AdminOverviewPage() {
-  const [
-    totalUsers,
-    paidUsers,
-    activePasses,
-    revenueResult,
-    aiCreditsUsed,
-    aiUsageResult,
-    failedPayments,
-    failedAiRequests,
-    supportCount,
-    visitors,
-    affiliateClicks,
-    topDestinations,
-    topReadyPlans,
-  ] = await Promise.all([
-    prisma.profile.count().catch(() => 0),
-    withExistingTable("passes", () => prisma.pass.count({ where: { status: "ACTIVE" } }), 0),
-    withExistingTable("passes", () => prisma.pass.count({ where: { status: "ACTIVE" } }), 0),
-    withExistingTable("payments", () => prisma.payment.aggregate({ where: { status: "PAID" }, _sum: { amount: true } }), { _sum: { amount: 0 } }),
-    withExistingTable("credit_ledger", () => prisma.creditLedger.aggregate({ where: { type: "CREDIT_USED" }, _sum: { amount: true } }), { _sum: { amount: 0 } }),
-    withExistingTable("ai_usage_logs", () => prisma.aiUsageLog.aggregate({ _sum: { estimatedCost: true } }), { _sum: { estimatedCost: 0 } }),
-    withExistingTable("payments", () => prisma.payment.count({ where: { status: "FAILED" } }), 0),
-    withExistingTable("ai_usage_logs", () => prisma.aiUsageLog.count({ where: { status: { not: "SUCCESS" } } }), 0),
-    withExistingTable("support_tickets", () => prisma.supportTicket.count({ where: { status: "OPEN" } }), 0),
-    withExistingTable("traffic_events", () => prisma.trafficEvent.count(), 0),
-    withExistingTable("traffic_events", () => prisma.trafficEvent.count({ where: { eventType: "AFFILIATE_BOOKING_CLICK" } }), 0),
-    withExistingTable("ready_plans", () => prisma.readyPlan.findMany({
-      where: { status: "PUBLISHED" },
-      orderBy: { updatedAt: "desc" },
-      take: 5,
-      select: { id: true, title: true, destination: true, updatedAt: true },
-    }), []),
-    withExistingTable<Array<{ refId: string; _count: { refId: number } }>>(
-      "saved_items",
-      () =>
-        prisma.savedItem.groupBy({
-          by: ["refId"],
-          where: { kind: "READY_PLAN" },
-          _count: true,
-          orderBy: { _count: { refId: "desc" } },
-          take: 5,
-        }) as any,
-      [],
-    ),
-  ]);
+  let totalUsers = 0;
+  let paidUsers = 0;
+  let activePasses = 0;
+  let revenueResult = { _sum: { amount: 0 } };
+  let aiCreditsUsed = { _sum: { amount: 0 } };
+  let aiUsageResult = { _sum: { estimatedCost: 0 } };
+  let failedPayments = 0;
+  let failedAiRequests = 0;
+  let supportCount = 0;
+  let visitors = 0;
+  let affiliateClicks = 0;
+  let topDestinations: Array<{ id: string; title: string; destination: string; updatedAt: Date }> = [];
+  let topReadyPlans: Array<{ refId: string; _count: { refId: number } }> = [];
+
+  try {
+    [
+      totalUsers,
+      paidUsers,
+      activePasses,
+      revenueResult,
+      aiCreditsUsed,
+      aiUsageResult,
+      failedPayments,
+      failedAiRequests,
+      supportCount,
+      visitors,
+      affiliateClicks,
+      topDestinations,
+      topReadyPlans,
+    ] = await Promise.all([
+      withExistingTable("profiles", () => prisma.profile.count(), 0),
+      withExistingTable("passes", countActivePasses, 0),
+      withExistingTable("passes", countActivePasses, 0),
+      withExistingTable("payments", () => prisma.payment.aggregate({ where: { status: "PAID" }, _sum: { amount: true } }), { _sum: { amount: 0 } }),
+      withExistingTable("credit_ledger", () => prisma.creditLedger.aggregate({ where: { type: "CREDIT_USED" }, _sum: { amount: true } }), { _sum: { amount: 0 } }),
+      withExistingTable("ai_usage_logs", () => prisma.aiUsageLog.aggregate({ _sum: { estimatedCost: true } }), { _sum: { estimatedCost: 0 } }),
+      withExistingTable("payments", () => prisma.payment.count({ where: { status: "FAILED" } }), 0),
+      withExistingTable("ai_usage_logs", () => prisma.aiUsageLog.count({ where: { status: { not: "SUCCESS" } } }), 0),
+      withExistingTable("support_tickets", () => prisma.supportTicket.count({ where: { status: "OPEN" } }), 0),
+      withExistingTable("traffic_events", () => prisma.trafficEvent.count(), 0),
+      withExistingTable("traffic_events", () => prisma.trafficEvent.count({ where: { eventType: "AFFILIATE_BOOKING_CLICK" } }), 0),
+      withExistingTable("ready_plans", () => prisma.readyPlan.findMany({
+        where: { status: "PUBLISHED" },
+        orderBy: { updatedAt: "desc" },
+        take: 5,
+        select: { id: true, title: true, destination: true, updatedAt: true },
+      }), []),
+      withExistingTable<Array<{ refId: string; _count: { refId: number } }>>(
+        "saved_items",
+        () =>
+          prisma.savedItem.groupBy({
+            by: ["refId"],
+            where: { kind: "READY_PLAN" },
+            _count: true,
+            orderBy: { _count: { refId: "desc" } },
+            take: 5,
+          }) as any,
+        [],
+      ),
+    ]);
+  } catch (error) {
+    console.error("AdminOverviewPage data error:", error);
+  }
 
   const revenue = Number(revenueResult._sum.amount || 0);
   const estimatedAiCost = Number(aiUsageResult._sum.estimatedCost || 0);

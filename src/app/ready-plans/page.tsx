@@ -4,7 +4,7 @@ import { CinematicCard } from "@/components/CinematicCards";
 import { prisma } from "@/lib/db/client";
 import { withDatabaseFallback } from "@/lib/prisma-safe";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export default async function ReadyPlansPage() {
   let plans: Awaited<ReturnType<typeof prisma.readyPlan.findMany>> = [];

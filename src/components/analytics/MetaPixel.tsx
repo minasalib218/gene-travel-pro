@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Script from "next/script";
+import { loadAnalyticsConfig } from "@/lib/analytics/config-client";
 
 declare global {
   interface Window {
@@ -73,8 +74,7 @@ export default function MetaPixel() {
   const [enabled, setEnabled] = useState(false);
 
   useEffect(() => {
-    fetch("/api/analytics/config", { cache: "no-store" })
-      .then((response) => response.json())
+    loadAnalyticsConfig()
       .then((data) => {
         setPixelId(data?.config?.metaPixelId || "");
         setEnabled(Boolean(data?.config?.enableMetaPixel));

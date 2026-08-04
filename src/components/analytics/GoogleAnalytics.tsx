@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Script from "next/script";
+import { loadAnalyticsConfig } from "@/lib/analytics/config-client";
 
 declare global {
   interface Window {
@@ -59,8 +60,7 @@ export default function GoogleAnalytics() {
   const [enabled, setEnabled] = useState(false);
 
   useEffect(() => {
-    fetch("/api/analytics/config", { cache: "no-store" })
-      .then((response) => response.json())
+    loadAnalyticsConfig()
       .then((data) => {
         setMeasurementId(data?.config?.gaMeasurementId || "");
         setEnabled(Boolean(data?.config?.enableGoogleAnalytics));
