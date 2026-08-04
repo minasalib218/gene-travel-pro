@@ -604,10 +604,12 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
     try {
       const publicHtml = previewRef.current ? generatePublicPlanHtml(previewRef.current) : content.publicHtml;
       const savedTitle = content.hero.title.trim() || plan.title;
+      const nextStatus = statusOverride ?? plan.status;
       const payload = {
         ...plan,
         title: savedTitle,
-        status: statusOverride ?? plan.status,
+        status: nextStatus,
+        showOnHome: nextStatus === "PUBLISHED",
         daysCount: content.days.length,
         contentJson: {
           ...content,

@@ -10,6 +10,9 @@ import {
   type ReadyPlanContent,
 } from "@/lib/ready-plan-content";
 import { tableExists } from "@/lib/prisma-safe";
+import { getLegacyReadyPlanById, updateLegacyReadyPlan } from "@/lib/ready-plan-legacy";
+
+const BOOK_NOW_LABEL = "Book Now";
 
 function toOptionalString(value: unknown) {
   if (typeof value !== "string") return null;
@@ -35,7 +38,7 @@ function toLinks(value: unknown) {
   return value
     .map((entry, index) => {
       const item = entry as Record<string, unknown>;
-      const label = String(item?.label ?? "").trim();
+      const label = BOOK_NOW_LABEL;
       const deeplink = String(item?.deeplink ?? item?.url ?? "").trim();
       if (!label || !deeplink) return null;
 
@@ -76,8 +79,8 @@ function toDayRecords(content: ReadyPlanContent) {
           peopleCount: item.people || null,
           statusLabel: item.status || null,
           categoryLabel: item.badge || null,
-          affiliateUrl: item.deeplink || null,
-          buttonLabel: item.buttonLabel || "Book Now",
+          affiliateUrl: item.buttonLabel ? item.deeplink || null : null,
+          buttonLabel: item.buttonLabel || null,
           sortOrder: itemIndex,
         })),
         ...day.suggestions.map((item, suggestionIndex) => ({
@@ -90,7 +93,7 @@ function toDayRecords(content: ReadyPlanContent) {
           statusLabel: item.matchScore || null,
           categoryLabel: item.category || null,
           affiliateUrl: null,
-          buttonLabel: item.ctaText || "Add to Plan",
+          buttonLabel: BOOK_NOW_LABEL,
           sortOrder: day.timelineItems.length + suggestionIndex,
         })),
         {
@@ -103,7 +106,7 @@ function toDayRecords(content: ReadyPlanContent) {
           statusLabel: null,
           categoryLabel: "story",
           affiliateUrl: null,
-          buttonLabel: day.story.musicLabel || "Open Story",
+          buttonLabel: BOOK_NOW_LABEL,
           sortOrder: day.timelineItems.length + day.suggestions.length,
         },
       ],
@@ -114,7 +117,11 @@ function toDayRecords(content: ReadyPlanContent) {
 function buildUpdateData(body: any) {
   const data: Record<string, unknown> = {};
 
-  if (body?.status !== undefined) data.status = toStatus(body.status);
+  if (body?.status !== undefined) {
+    const status = toStatus(body.status);
+    data.status = status;
+    data.showOnHome = status === ReadyPlanStatus.PUBLISHED;
+  }
   if (body?.slug !== undefined) data.slug = String(body.slug).trim();
   if (body?.title !== undefined) data.title = String(body.title).trim();
   if (body?.subtitle !== undefined) data.subtitle = toOptionalString(body.subtitle);
@@ -136,35 +143,104 @@ function buildUpdateData(body: any) {
   if (body?.seoDescription !== undefined) data.seoDescription = toOptionalString(body.seoDescription);
   if (body?.tags !== undefined) data.tags = Array.isArray(body.tags) ? body.tags.map((tag: unknown) => String(tag).trim()).filter(Boolean) : [];
   if (body?.season !== undefined) data.season = toOptionalString(body.season);
-  if (body?.showOnHome !== undefined) data.showOnHome = Boolean(body.showOnHome);
+  if (body?.showOnHome !== undefined && data.status === undefined) data.showOnHome = Boolean(body.showOnHome);
   if (body?.links !== undefined) data.links = toLinks(body.links);
 
-  const basePlan = {
-    title: String(data.title ?? body?.title ?? "").trim(),
-    subtitle: (data.subtitle as string | null | undefined) ?? toOptionalString(body?.subtitle),
-    destination: String(data.destination ?? body?.destination ?? "").trim(),
-    daysCount: Number(data.daysCount ?? body?.daysCount ?? body?.days ?? 0) || 0,
-    heroImage:
-      (data.heroImage as string | null | undefined) ??
-      toOptionalString(body?.heroImage ?? body?.heroImageUrl ?? body?.imageUrl),
-    coverImage: (data.coverImage as string | null | undefined) ?? toOptionalString(body?.coverImage),
-    priceFrom: (data.priceFrom as number | null | undefined) ?? toOptionalNumber(body?.priceFrom),
-    currency: (data.currency as string | undefined) ?? toOptionalString(body?.currency) ?? "USD",
-    style: (data.style as string | null | undefined) ?? toOptionalString(body?.style),
-    daysJson: Array.isArray(body?.daysJson) ? body.daysJson : [],
-    contentJson: body?.contentJson,
-  };
+  const shouldRewriteContent = body?.contentJson !== undefined || body?.daysJson !== undefined;
 
-  const normalizedContent = normalizeReadyPlanContent(
-    body?.contentJson ?? buildDefaultReadyPlanContent(basePlan),
-    basePlan,
-  );
+  if (shouldRewriteContent) {
+    const basePlan = {
+      title: String(data.title ?? body?.title ?? "").trim(),
+      subtitle: (data.subtitle as string | null | undefined) ?? toOptionalString(body?.subtitle),
+      destination: String(data.destination ?? body?.destination ?? "").trim(),
+      daysCount: Number(data.daysCount ?? body?.daysCount ?? body?.days ?? 0) || 0,
+      heroImage:
+        (data.heroImage as string | null | undefined) ??
+        toOptionalString(body?.heroImage ?? body?.heroImageUrl ?? body?.imageUrl),
+      coverImage: (data.coverImage as string | null | undefined) ?? toOptionalString(body?.coverImage),
+      priceFrom: (data.priceFrom as number | null | undefined) ?? toOptionalNumber(body?.priceFrom),
+      currency: (data.currency as string | undefined) ?? toOptionalString(body?.currency) ?? "USD",
+      style: (data.style as string | null | undefined) ?? toOptionalString(body?.style),
+      daysJson: Array.isArray(body?.daysJson) ? body.daysJson : [],
+      contentJson: body?.contentJson,
+    };
 
-  data.daysJson = contentToDaysJson(normalizedContent);
-  data.contentJson = normalizedContent;
-  data.dayRecords = toDayRecords(normalizedContent);
+    const normalizedContent = normalizeReadyPlanContent(
+      body?.contentJson ?? buildDefaultReadyPlanContent(basePlan),
+      basePlan,
+    );
+
+    data.daysJson = contentToDaysJson(normalizedContent);
+    data.contentJson = normalizedContent;
+    data.dayRecords = toDayRecords(normalizedContent);
+  }
 
   return data;
+}
+
+function hasText(value: unknown) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+async function preserveExistingItemFields(planId: string, data: Record<string, unknown>) {
+  if (data.dayRecords === undefined && data.contentJson === undefined && data.daysJson === undefined) return;
+
+  const existing = await prisma.readyPlan.findUnique({
+    where: { id: planId },
+    include: {
+      dayRecords: {
+        orderBy: { sortOrder: "asc" },
+        include: {
+          itemRecords: {
+            orderBy: { sortOrder: "asc" },
+            select: {
+              affiliateUrl: true,
+              imageUrl: true,
+            },
+          },
+        },
+      },
+    },
+  } as any).catch(() => null as any);
+
+  const existingDays = Array.isArray((existing as any)?.dayRecords) ? (existing as any).dayRecords : [];
+  if (!existingDays.length) return;
+
+  const dayRecords = Array.isArray(data.dayRecords) ? (data.dayRecords as any[]) : [];
+  const content = data.contentJson && typeof data.contentJson === "object" ? (data.contentJson as any) : null;
+  const daysJson = Array.isArray(data.daysJson) ? (data.daysJson as any[]) : [];
+
+  dayRecords.forEach((dayRecord, dayIndex) => {
+    const existingItems = Array.isArray(existingDays[dayIndex]?.itemRecords) ? existingDays[dayIndex].itemRecords : [];
+    const createdItems = Array.isArray(dayRecord?.itemRecords?.create) ? dayRecord.itemRecords.create : [];
+    const contentItems = Array.isArray(content?.days?.[dayIndex]?.timelineItems) ? content.days[dayIndex].timelineItems : [];
+    const jsonItems = Array.isArray(daysJson?.[dayIndex]?.items) ? daysJson[dayIndex].items : [];
+
+    createdItems.forEach((item, itemIndex) => {
+      const oldItem = existingItems[itemIndex];
+      if (!oldItem) return;
+
+      if (!hasText(item.affiliateUrl) && hasText(oldItem.affiliateUrl)) {
+        item.affiliateUrl = oldItem.affiliateUrl;
+        if (contentItems[itemIndex] && !hasText(contentItems[itemIndex].deeplink)) {
+          contentItems[itemIndex].deeplink = oldItem.affiliateUrl;
+        }
+        if (jsonItems[itemIndex] && !hasText(jsonItems[itemIndex].deeplink)) {
+          jsonItems[itemIndex].deeplink = oldItem.affiliateUrl;
+        }
+      }
+
+      if (!hasText(item.imageUrl) && hasText(oldItem.imageUrl)) {
+        item.imageUrl = oldItem.imageUrl;
+        if (contentItems[itemIndex] && !hasText(contentItems[itemIndex].imageUrl)) {
+          contentItems[itemIndex].imageUrl = oldItem.imageUrl;
+        }
+        if (jsonItems[itemIndex] && !hasText(jsonItems[itemIndex].imageUrl)) {
+          jsonItems[itemIndex].imageUrl = oldItem.imageUrl;
+        }
+      }
+    });
+  });
 }
 
 function isSchemaMismatchError(error: unknown) {
@@ -213,32 +289,37 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
     }
   } catch (error) {
     if (!isSchemaMismatchError(error)) throw error;
-    plan = await prisma.readyPlan.findUnique({
-      where: { id: params.id },
-      select: {
-        id: true,
-        status: true,
-        slug: true,
-        title: true,
-        subtitle: true,
-        destination: true,
-        daysCount: true,
-        heroImage: true,
-        coverImage: true,
-        priceFrom: true,
-        currency: true,
-        daysJson: true,
-        createdAt: true,
-        updatedAt: true,
-        ...(includeLinks
-          ? {
-              links: {
-                orderBy: { sortOrder: "asc" },
-              },
-            }
-          : {}),
-      },
-    } as any);
+    try {
+      plan = await prisma.readyPlan.findUnique({
+        where: { id: params.id },
+        select: {
+          id: true,
+          status: true,
+          slug: true,
+          title: true,
+          subtitle: true,
+          destination: true,
+          daysCount: true,
+          heroImage: true,
+          coverImage: true,
+          priceFrom: true,
+          currency: true,
+          daysJson: true,
+          createdAt: true,
+          updatedAt: true,
+          ...(includeLinks
+            ? {
+                links: {
+                  orderBy: { sortOrder: "asc" },
+                },
+              }
+            : {}),
+        },
+      } as any);
+    } catch (legacyError) {
+      if (!isSchemaMismatchError(legacyError)) throw legacyError;
+      plan = await getLegacyReadyPlanById(params.id);
+    }
   }
   if (!plan) return NextResponse.json({ ok: false, code: "NOT_FOUND" }, { status: 404 });
 
@@ -255,6 +336,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const linksTableExists = await tableExists("ready_plan_links");
   const dayRecordsTableExists = await tableExists("ready_plan_days");
   const itemRecordsTableExists = await tableExists("ready_plan_items");
+  if (dayRecordsTableExists && itemRecordsTableExists) {
+    await preserveExistingItemFields(params.id, data);
+  }
   const richUpdateData = {
     ...(data.status !== undefined ? { status: data.status as ReadyPlanStatus } : {}),
     ...(data.slug !== undefined ? { slug: data.slug as string } : {}),
@@ -358,19 +442,46 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     });
   } catch (error) {
     if (!isSchemaMismatchError(error)) throw error;
-    updated = await prisma.readyPlan.update({
-      where: { id: params.id },
-      data: legacyUpdateData,
-      include: {
-        ...(linksTableExists
-          ? {
-              links: {
-                orderBy: { sortOrder: "asc" },
-              },
-            }
-          : {}),
-      },
-    } as any);
+    try {
+      updated = await prisma.readyPlan.update({
+        where: { id: params.id },
+        data: legacyUpdateData,
+        include: {
+          ...(linksTableExists
+            ? {
+                links: {
+                  orderBy: { sortOrder: "asc" },
+                },
+              }
+            : {}),
+        },
+      } as any);
+    } catch (legacyError) {
+      if (!isSchemaMismatchError(legacyError)) throw legacyError;
+      updated = await updateLegacyReadyPlan(params.id, {
+        ...(data.status !== undefined ? { status: data.status as ReadyPlanStatus } : {}),
+        ...(data.slug !== undefined ? { slug: data.slug as string } : {}),
+        ...(data.title !== undefined ? { title: data.title as string } : {}),
+        ...(data.subtitle !== undefined ? { subtitle: data.subtitle as string | null } : {}),
+        ...(data.country !== undefined ? { country: data.country as string | null } : {}),
+        ...(data.city !== undefined ? { city: data.city as string | null } : {}),
+        ...(data.destination !== undefined ? { destination: data.destination as string } : {}),
+        ...(data.style !== undefined ? { style: data.style as string | null } : {}),
+        ...(data.daysCount !== undefined ? { daysCount: data.daysCount as number } : {}),
+        ...(data.priceFrom !== undefined ? { priceFrom: data.priceFrom as number | null } : {}),
+        ...(data.currency !== undefined ? { currency: data.currency as string } : {}),
+        ...(data.heroImage !== undefined ? { heroImage: data.heroImage as string | null } : {}),
+        ...(data.coverImage !== undefined ? { coverImage: data.coverImage as string | null } : {}),
+        ...(data.summary !== undefined ? { summary: data.summary as string | null } : {}),
+        ...(data.seoTitle !== undefined ? { seoTitle: data.seoTitle as string | null } : {}),
+        ...(data.seoDescription !== undefined ? { seoDescription: data.seoDescription as string | null } : {}),
+        ...(data.tags !== undefined ? { tags: data.tags as string[] } : {}),
+        ...(data.season !== undefined ? { season: data.season as string | null } : {}),
+        ...(data.showOnHome !== undefined ? { showOnHome: data.showOnHome as boolean } : {}),
+        ...(data.daysJson !== undefined ? { daysJson: data.daysJson as Prisma.InputJsonValue } : {}),
+        ...(data.contentJson !== undefined ? { contentJson: data.contentJson as Prisma.InputJsonValue } : {}),
+      });
+    }
   }
 
   revalidateReadyPlanPaths(updated.slug);

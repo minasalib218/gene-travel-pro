@@ -43,6 +43,7 @@ export type ReadyPlanRecord = {
   currency: string;
   status: "DRAFT" | "PUBLISHED";
   daysJson: unknown;
+  contentJson?: unknown;
   links: ReadyPlanLinkRecord[];
   updatedAt: string | Date;
 };
@@ -230,6 +231,7 @@ function buildPayload(draft: PlanDraft, status: "DRAFT" | "PUBLISHED") {
     priceFrom: draft.priceFrom.trim() ? Number(draft.priceFrom) : null,
     currency: draft.currency.trim() || "USD",
     status,
+    showOnHome: status === "PUBLISHED",
     daysJson: normalizedDays,
     links: quickLinks,
   };
