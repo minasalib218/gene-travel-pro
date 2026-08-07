@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 
 type CardProps = {
   title: string;
@@ -19,9 +20,13 @@ export function CinematicCard({
     <div className="group overflow-hidden rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl transition hover:-translate-y-1 hover:bg-white/[0.07]">
       <div className="relative h-44 w-full overflow-hidden">
         {imageUrl ? (
-          <img
+          <Image
             src={imageUrl}
             alt={title}
+            width={900}
+            height={560}
+            sizes="(max-width: 768px) 100vw, (max-width: 1280px) 50vw, 33vw"
+            quality={82}
             className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
           />
         ) : (

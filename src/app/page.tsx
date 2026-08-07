@@ -30,7 +30,7 @@ const fallbackSlides: HomeSlide[] = [
     title: "Istanbul Culture Journey",
     subtitle: "Bazaars, Bosphorus atmosphere, layered heritage",
     image: "/images/istanbul.jpg",
-    preview: "/bg/home-hero-bottom.png",
+    preview: "/bg/home-hero-bottom-optimized.jpg",
     href: "/ready-plans/istanbul-culture-journey",
     eyebrow: "Istanbul, Turkey",
     note: "A textured cultural route with stronger local contrast.",
@@ -88,7 +88,7 @@ export default async function HomePage() {
       slides = plans.map((plan) => ({
         title: plan.title,
         subtitle: plan.subtitle || `${plan.destination} cinematic route`,
-        image: plan.coverImage || plan.heroImage || "/bg/home-hero-bottom.png",
+        image: plan.coverImage || plan.heroImage || "/bg/home-hero-bottom-optimized.jpg",
         preview: plan.heroImage || plan.coverImage || "/bg/home-hero.png",
         href: `/ready-plans/${encodeURIComponent(plan.slug)}`,
         eyebrow: plan.destination,

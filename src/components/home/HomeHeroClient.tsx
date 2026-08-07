@@ -70,7 +70,7 @@ const destinationFeatureCards: DestinationFeatureCard[] = [
     title: "Santorini",
     country: "Greece",
     description: "Iconic sunsets, white architecture, and endless blue calm.",
-    image: "/bg/home-hero-bottom.png",
+    image: "/bg/home-hero-bottom-optimized.jpg",
     href: "/destinations",
   },
   {
@@ -925,7 +925,7 @@ function BottomSmartPlanBanner() {
   return (
     <section className="mt-10 overflow-hidden rounded-[34px] shadow-[0_24px_56px_rgba(34,27,19,0.18)]">
       <div className="relative min-h-[240px]">
-        <Image src="/bg/home-hero-bottom.png" alt="Plan smarter with AI" fill className="object-cover" />
+        <Image src="/bg/home-hero-bottom-optimized.jpg" alt="Plan smarter with AI" fill className="object-cover" />
         <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(8,12,18,0.82)_0%,rgba(12,16,22,0.42)_45%,rgba(7,10,15,0.75)_100%)]" />
         <div className="relative flex h-full flex-col gap-8 px-8 py-10 md:px-12 lg:flex-row lg:items-center lg:justify-between">
           <div className="max-w-xl text-white">

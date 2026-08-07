@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
 import { requireAdmin } from "@/lib/admin/requireAdmin";
 import { Prisma, ReadyPlanStatus } from "@prisma/client";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import {
   buildDefaultReadyPlanContent,
   contentToDaysJson,
@@ -253,6 +253,7 @@ function isSchemaMismatchError(error: unknown) {
 }
 
 function revalidateReadyPlanPaths(slug?: string) {
+  revalidateTag("published-ready-plans");
   revalidatePath("/");
   revalidatePath("/admin");
   revalidatePath("/admin/ready-plans");

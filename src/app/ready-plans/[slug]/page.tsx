@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/db/client";
 import CinematicReadyPlanPage from "@/components/ready-plan/CinematicReadyPlanPage";
 import { buildDefaultReadyPlanContent, type ReadyPlanContent } from "@/lib/ready-plan-content";
@@ -6,6 +7,7 @@ import { sanitizeReadyPlanContentForPublic } from "@/lib/ready-plan-public";
 import { isDatabaseUnavailableError, tableExists, withDatabaseFallback } from "@/lib/prisma-safe";
 
 export const revalidate = 60;
+export const dynamic = "force-static";
 
 function getBookableItemIds(content: ReadyPlanContent, dayRecords?: any[] | null) {
   const ids = new Set<string>();
@@ -34,97 +36,110 @@ function getBookableItemIds(content: ReadyPlanContent, dayRecords?: any[] | null
   return Array.from(ids);
 }
 
+const getPublishedReadyPlan = unstable_cache(
+  async (slug: string) => {
+    let plan = null as Awaited<ReturnType<typeof prisma.readyPlan.findUnique>> | null;
+    const includeLinks = await tableExists("ready_plan_links");
+    const includeDayRecords = await tableExists("ready_plan_days");
+    const includeItemRecords = includeDayRecords ? await tableExists("ready_plan_items") : false;
+    const dayRecordsInclude = includeDayRecords
+      ? {
+          dayRecords: {
+            orderBy: { sortOrder: "asc" as const },
+            ...(includeItemRecords
+              ? {
+                  include: {
+                    itemRecords: {
+                      orderBy: { sortOrder: "asc" as const },
+                      select: {
+                        id: true,
+                        affiliateUrl: true,
+                        buttonLabel: true,
+                        sortOrder: true,
+                      },
+                    },
+                  },
+                }
+              : {}),
+          },
+        }
+      : {};
+
+    try {
+      plan = includeLinks
+        ? await withDatabaseFallback(
+            () =>
+              prisma.readyPlan.findUnique({
+                where: { slug },
+                include: {
+                  links: {
+                    orderBy: { sortOrder: "asc" },
+                  },
+                  ...dayRecordsInclude,
+                },
+              } as any),
+            null,
+          )
+        : await withDatabaseFallback(
+            () =>
+              prisma.readyPlan.findUnique({
+                where: { slug },
+                include: dayRecordsInclude,
+              } as any),
+            null,
+          );
+    } catch (error: any) {
+      if (isDatabaseUnavailableError(error)) {
+        return null;
+      }
+
+      if (error?.code !== "P2022") throw error;
+      plan = await withDatabaseFallback(
+        () =>
+          prisma.readyPlan.findUnique({
+            where: { slug },
+            select: {
+              id: true,
+              slug: true,
+              title: true,
+              subtitle: true,
+              destination: true,
+              daysCount: true,
+              heroImage: true,
+              coverImage: true,
+              priceFrom: true,
+              currency: true,
+              status: true,
+              daysJson: true,
+              ...(includeLinks
+                ? {
+                    links: {
+                      orderBy: { sortOrder: "asc" },
+                    },
+                  }
+                : {}),
+              ...dayRecordsInclude,
+            },
+          } as any),
+        null,
+      );
+    }
+
+    return plan;
+  },
+  ["published-ready-plan-detail"],
+  {
+    revalidate: 60,
+    tags: ["published-ready-plans"],
+  },
+);
+
 export default async function ReadyPlanDetailPage({
   params,
 }: {
   params: { slug: string };
 }) {
-  let plan = null as Awaited<ReturnType<typeof prisma.readyPlan.findUnique>> | null;
-  const includeLinks = await tableExists("ready_plan_links");
-  const includeDayRecords = await tableExists("ready_plan_days");
-  const includeItemRecords = includeDayRecords ? await tableExists("ready_plan_items") : false;
-  const dayRecordsInclude = includeDayRecords
-    ? {
-        dayRecords: {
-          orderBy: { sortOrder: "asc" as const },
-          ...(includeItemRecords
-            ? {
-                include: {
-                  itemRecords: {
-                    orderBy: { sortOrder: "asc" as const },
-                    select: {
-                      id: true,
-                      affiliateUrl: true,
-                      buttonLabel: true,
-                      sortOrder: true,
-                    },
-                  },
-                },
-              }
-            : {}),
-        },
-      }
-    : {};
-
-  try {
-    plan = includeLinks
-      ? await withDatabaseFallback(
-          () =>
-            prisma.readyPlan.findUnique({
-              where: { slug: params.slug },
-              include: {
-                links: {
-                  orderBy: { sortOrder: "asc" },
-                },
-                ...dayRecordsInclude,
-              },
-            } as any),
-          null,
-        )
-      : await withDatabaseFallback(
-          () =>
-            prisma.readyPlan.findUnique({
-              where: { slug: params.slug },
-              include: dayRecordsInclude,
-            } as any),
-          null,
-        );
-  } catch (error: any) {
-    if (isDatabaseUnavailableError(error)) {
-      return notFound();
-    }
-
-    if (error?.code !== "P2022") throw error;
-    plan = await withDatabaseFallback(
-      () =>
-        prisma.readyPlan.findUnique({
-          where: { slug: params.slug },
-          select: {
-            id: true,
-            slug: true,
-            title: true,
-            subtitle: true,
-            destination: true,
-            daysCount: true,
-            heroImage: true,
-            coverImage: true,
-            priceFrom: true,
-            currency: true,
-            status: true,
-            daysJson: true,
-            ...(includeLinks
-              ? {
-                  links: {
-                    orderBy: { sortOrder: "asc" },
-                  },
-                }
-              : {}),
-            ...dayRecordsInclude,
-          },
-        } as any),
-      null,
-    );
-  }
+  const plan = await getPublishedReadyPlan(params.slug);
 
   if (!plan || plan.status !== "PUBLISHED") return notFound();
 

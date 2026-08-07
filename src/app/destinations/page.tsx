@@ -34,7 +34,7 @@ export default async function DestinationsPage() {
         title: record.title,
         country: "Destination",
         description: record.description,
-        image: record.imageUrl || "/bg/home-hero-bottom.png",
+        image: record.imageUrl || "/bg/home-hero-bottom-optimized.jpg",
         href: `/destinations/${encodeURIComponent(record.slug)}`,
         featured: index === 0,
       };

@@ -156,7 +156,7 @@ function getSavedReadyPlanCard(item: SavedItemRecord) {
     getMetaField(item.meta, "image") ||
     getMetaField(item.meta, "coverImage") ||
     getMetaField(item.meta, "heroImage") ||
-    "/bg/home-hero-bottom.png";
+    "/bg/home-hero-bottom-optimized.jpg";
 
   return { title, subtitle, slug, image };
 }
@@ -301,7 +301,7 @@ export default async function ProfilePage() {
         <div className="overflow-hidden rounded-[42px] border border-white/12 bg-black/30 shadow-[0_40px_120px_rgba(0,0,0,0.55)] backdrop-blur-2xl">
           <div className="relative min-h-[420px] overflow-hidden">
             <Image
-              src="/bg/home-hero-bottom.png"
+              src="/bg/home-hero-bottom-optimized.jpg"
               alt="Profile cinematic header"
               fill
               className="object-cover opacity-50"

@@ -29,7 +29,7 @@ export function parseDestinationRecord(record: Record<string, unknown>): Destina
     id: String(record.id ?? ""),
     title: normalizeString(record.title),
     slug: normalizeString(record.slug),
-    imageUrl: normalizeString(record.imageUrl, "/bg/home-hero-bottom.png"),
+    imageUrl: normalizeString(record.imageUrl, "/bg/home-hero-bottom-optimized.jpg"),
     iconUrl: normalizeString(record.iconUrl),
     affiliateLink: normalizeString(record.affiliateLink),
     description: normalizeString(

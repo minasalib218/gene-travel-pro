@@ -53,7 +53,7 @@ export function parseOfferRecord(deal: DealLike): OfferRecord {
   const imageUrl =
     toString(meta.imageUrl) ||
     toString(meta.coverImage) ||
-    "/bg/home-hero-bottom.png";
+    "/bg/home-hero-bottom-optimized.jpg";
   const coverImage =
     toString(meta.coverImage) ||
     toString(meta.imageUrl) ||

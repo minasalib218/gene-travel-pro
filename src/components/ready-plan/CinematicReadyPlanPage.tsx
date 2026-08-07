@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -107,14 +108,32 @@ function Img({
   className?: string;
   eager?: boolean;
 }) {
+  const imageSrc = src || "/bg/home-hero.png";
+
+  if (imageSrc.startsWith("data:") || imageSrc.startsWith("blob:")) {
+    return (
+      <img
+        src={imageSrc}
+        alt={alt}
+        className={className}
+        loading={eager ? "eager" : "lazy"}
+        decoding="async"
+        fetchPriority={eager ? "high" : "auto"}
+      />
+    );
+  }
+
   return (
-    <img
-      src={src || "/bg/home-hero.png"}
+    <Image
+      src={imageSrc}
       alt={alt}
+      width={1600}
+      height={1000}
+      sizes={eager ? "100vw" : "(max-width: 768px) 100vw, (max-width: 1280px) 55vw, 720px"}
+      quality={82}
       className={className}
+      priority={eager}
       loading={eager ? "eager" : "lazy"}
-      decoding="async"
-      fetchPriority={eager ? "high" : "auto"}
     />
   );
 }
