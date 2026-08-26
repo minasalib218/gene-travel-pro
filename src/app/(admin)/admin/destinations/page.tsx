@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { parseDestinationRecord } from "@/lib/content/destinations";
+import { getDestinationSectionLabel, parseDestinationRecord } from "@/lib/content/destinations";
 import { withExistingTable } from "@/lib/prisma-safe";
 
 export const dynamic = "force-dynamic";
@@ -40,6 +40,9 @@ export default async function AdminDestinationsPage() {
               <img src={item.imageUrl} alt={item.title} className="h-full w-full object-cover" />
               <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent" />
               <div className="absolute left-4 top-4 rounded-full border border-white/10 bg-black/35 px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-white/72">{item.status}</div>
+              <div className="absolute right-4 top-4 rounded-full border border-[#ff7a00]/35 bg-[#ff7a00]/18 px-3 py-1 text-[10px] uppercase tracking-[0.16em] text-[#ffd1a3]">
+                {getDestinationSectionLabel(item.section)}
+              </div>
               <div className="absolute inset-x-0 bottom-0 p-4">
                 <div className="text-2xl font-semibold text-white">{item.title}</div>
               </div>

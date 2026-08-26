@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import type { DestinationRecord } from "@/lib/content/destinations";
+import { destinationSections, type DestinationRecord } from "@/lib/content/destinations";
 import AdminImageUploadField from "./AdminImageUploadField";
 
 export default function DestinationEditorForm({
@@ -87,6 +87,15 @@ export default function DestinationEditorForm({
             <AdminImageUploadField label="Card Image" bucket="destinations" value={draft.imageUrl} onChange={(value) => setDraft({ ...draft, imageUrl: value })} />
             <AdminImageUploadField label="Icon Image" bucket="destinations" value={draft.iconUrl} onChange={(value) => setDraft({ ...draft, iconUrl: value })} />
             <Field label="Affiliate Link"><input value={draft.affiliateLink} onChange={(e) => setDraft({ ...draft, affiliateLink: e.target.value })} className="input" /></Field>
+            <Field label="Destination Section">
+              <select value={draft.section} onChange={(e) => setDraft({ ...draft, section: e.target.value as DestinationRecord["section"] })} className="input">
+                {destinationSections.map((section) => (
+                  <option key={section.value} value={section.value}>
+                    {section.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
             <Field label="Status">
               <select value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value as DestinationRecord["status"] })} className="input">
                 <option value="draft">Draft</option>

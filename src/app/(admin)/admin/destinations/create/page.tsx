@@ -12,6 +12,7 @@ export default function CreateDestinationPage() {
         iconUrl: "",
         affiliateLink: "",
         description: "",
+        section: "asia",
         status: "draft",
       }}
     />

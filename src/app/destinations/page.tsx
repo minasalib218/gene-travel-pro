@@ -2,7 +2,7 @@ import { MapPin } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import CollectionShowcasePage from "@/components/home/CollectionShowcasePage";
 import { prisma } from "@/lib/db/client";
-import { parseDestinationRecord } from "@/lib/content/destinations";
+import { destinationSections, getDestinationSectionLabel, parseDestinationRecord, type DestinationSectionValue } from "@/lib/content/destinations";
 import { withExistingTable } from "@/lib/prisma-safe";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +14,7 @@ export default async function DestinationsPage() {
     description: string;
     image: string;
     href: string;
+    section: DestinationSectionValue;
     featured?: boolean;
   }> = [];
 
@@ -32,10 +33,11 @@ export default async function DestinationsPage() {
       const record = parseDestinationRecord(plan as any);
       return {
         title: record.title,
-        country: "Destination",
+        country: getDestinationSectionLabel(record.section),
         description: record.description,
         image: record.imageUrl || "/bg/home-hero-bottom-optimized.jpg",
         href: `/destinations/${encodeURIComponent(record.slug)}`,
+        section: record.section,
         featured: index === 0,
       };
     });
@@ -55,6 +57,13 @@ export default async function DestinationsPage() {
         ctaLabel="View All Destinations"
         ctaHref="/destinations"
         cards={cards}
+        sections={destinationSections
+          .map((section) => ({
+            id: section.value,
+            eyebrow: "Region",
+            title: section.label,
+            cards: cards.filter((card) => card.section === section.value),
+          }))}
         emptyMessage="No destination programs are published yet."
       />
     </main>

@@ -4,7 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  url      = env("POSTGRES_PRISMA_URL")
 }
 
 enum PassStatus {
@@ -150,6 +150,7 @@ model Profile {
 
   passes Pass[]
   payments Payment[]
+  adminNotifications AdminNotification[]
   creditLedger CreditLedger[]
   emailLogs EmailLog[]
   aiUsageLogs AiUsageLog[]
@@ -227,12 +228,33 @@ model Payment {
 
   profile Profile? @relation(fields: [userId], references: [id], onDelete: SetNull)
   pass    Pass?
+  adminNotifications AdminNotification[]
   creditLedger CreditLedger[]
   emailLogs EmailLog[]
 
   @@index([userId])
   @@index([status])
   @@map("payments")
+}
+
+model AdminNotification {
+  id        String   @id @default(cuid())
+  type      String
+  userId    String?  @map("user_id")
+  email     String?
+  tier      String?
+  paymentId String?  @map("payment_id")
+  orderId   String?  @map("order_id")
+  message   String
+  status    String   @default("OPEN")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  profile Profile? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  payment Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([status])
+  @@map("admin_notifications")
 }
 
 model WebhookEvent {
@@ -517,11 +539,13 @@ model Destination {
   iconUrl       String?
   affiliateLink String?
   description   String?
+  section       String   @default("asia")
   status        String   @default("draft")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   @@index([status, updatedAt])
+  @@index([section, status, updatedAt])
   @@map("destinations")
 }
 
@@ -754,6 +778,94 @@ model CustomerEvent {
   @@index([eventType])
   @@index([createdAt])
   @@map("customer_events")
+}
+
+// =========================
+// CUSTOMER PROFILE ACTIVITY
+// =========================
+model FavoritePlan {
+  id          String   @id @default(cuid())
+  userId      String
+  readyPlanId String
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, readyPlanId])
+  @@index([userId])
+  @@index([readyPlanId])
+  @@map("favorite_plans")
+}
+
+model BookingClick {
+  id              String   @id @default(cuid())
+  userId          String?
+  planId          String?
+  planItemId      String?
+  readyPlanId     String?
+  readyPlanItemId String?
+  provider        String?
+  providerItemId  String?
+  itemName        String
+  itemType        String?
+  destination     String?
+  clickedAt       DateTime @default(now())
+  metadata        Json?
+
+  @@index([userId, clickedAt])
+  @@index([readyPlanId, clickedAt])
+  @@index([readyPlanItemId, clickedAt])
+  @@map("booking_clicks")
+}
+
+model Booking {
+  id                String   @id @default(cuid())
+  userId            String
+  provider          String
+  providerBookingId String?
+  planId            String?
+  planItemId        String?
+  readyPlanId       String?
+  readyPlanItemId   String?
+  status            String   @default("PENDING")
+  bookingDate       DateTime?
+  travelDate        DateTime?
+  amount            Float?
+  currency          String?
+  commission        Float?
+  metadata          Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([provider, providerBookingId])
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@map("bookings")
+}
+
+model RecentlyViewed {
+  id         String   @id @default(cuid())
+  userId     String
+  entityType String
+  entityId   String
+  viewedAt   DateTime @default(now())
+  metadata   Json?
+
+  @@unique([userId, entityType, entityId])
+  @@index([userId, viewedAt])
+  @@map("recently_viewed")
+}
+
+model UserActivity {
+  id         String   @id @default(cuid())
+  userId     String
+  event      String
+  entityType String?
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([event, createdAt])
+  @@map("user_activity")
 }
 
 // =========================

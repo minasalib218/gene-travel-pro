@@ -1,8 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
-import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import { ArrowRight, CalendarDays, Globe, MapPin, Search, Tag, User } from "lucide-react";
+import { ArrowRight, Globe, MapPin } from "lucide-react";
+import DestinationFilterShowcase from "./DestinationFilterShowcase";
 
 type DestinationShowcaseCard = {
   title: string;
@@ -11,6 +11,13 @@ type DestinationShowcaseCard = {
   image: string;
   href: string;
   featured?: boolean;
+};
+
+type DestinationShowcaseSection = {
+  id: string;
+  eyebrow: string;
+  title: string;
+  cards: DestinationShowcaseCard[];
 };
 
 type OfferShowcaseCard = {
@@ -41,6 +48,7 @@ type CollectionShowcasePageProps =
       ctaLabel: string;
       ctaHref: string;
       cards: DestinationShowcaseCard[];
+      sections?: DestinationShowcaseSection[];
       emptyMessage: string;
       icon: LucideIcon;
     }
@@ -76,6 +84,7 @@ const footerLinks = [
 
 export default function CollectionShowcasePage(props: CollectionShowcasePageProps) {
   const Icon = props.icon;
+  const destinationSections = props.kind === "destinations" ? props.sections ?? [] : [];
 
   return (
     <>
@@ -122,11 +131,15 @@ export default function CollectionShowcasePage(props: CollectionShowcasePageProp
               ) : null}
 
               {props.kind === "destinations" ? (
-                <div className="grid gap-6 md:grid-cols-2 2xl:grid-cols-4">
-                  {props.cards.map((card) => (
-                    <DestinationCard key={`${card.title}-${card.country}-${card.href}`} card={card} />
-                  ))}
-                </div>
+                destinationSections.length > 0 ? (
+                  <DestinationFilterShowcase sections={destinationSections} />
+                ) : (
+                  <div className="grid gap-6 md:grid-cols-2 2xl:grid-cols-4">
+                    {props.cards.map((card) => (
+                      <DestinationCard key={`${card.title}-${card.country}-${card.href}`} card={card} />
+                    ))}
+                  </div>
+                )
               ) : null}
 
               {props.kind === "offers" ? (
@@ -168,20 +181,6 @@ export default function CollectionShowcasePage(props: CollectionShowcasePageProp
             ))}
           </nav>
 
-          <div className="flex items-center gap-3">
-            <FooterIcon href="https://instagram.com" label="Discover">
-              <Search size={16} />
-            </FooterIcon>
-            <FooterIcon href="https://facebook.com" label="Profile">
-              <User size={16} />
-            </FooterIcon>
-            <FooterIcon href="https://twitter.com" label="Offers">
-              <Tag size={16} />
-            </FooterIcon>
-            <FooterIcon href="https://youtube.com" label="Events">
-              <CalendarDays size={16} />
-            </FooterIcon>
-          </div>
         </div>
       </footer>
     </>
@@ -213,7 +212,6 @@ function DestinationCard({ card }: { card: DestinationShowcaseCard }) {
         <div className="max-w-[80%] text-white">
           <div className="text-[30px] font-semibold leading-none tracking-[-0.04em]">{card.title}</div>
           <div className="mt-2 text-lg text-white/88">{card.country}</div>
-          <p className="mt-3 text-sm leading-6 text-white/78">{card.description}</p>
         </div>
 
         <span className="mb-1 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#ff7a00]/65 bg-black/45 text-[#ffb15f] shadow-[0_0_0_rgba(255,122,0,0)] transition duration-300 group-hover:shadow-[0_0_22px_rgba(255,122,0,0.45)]">
@@ -341,7 +339,7 @@ function BottomSmartPlanBanner() {
             </div>
 
             <Link
-              href="/ai-planner"
+              href="/start-planning"
               className="inline-flex items-center justify-center gap-3 rounded-[24px] bg-[linear-gradient(135deg,#ff7a00,#ffb24b)] px-8 py-5 text-sm font-semibold uppercase tracking-[0.14em] text-white shadow-[0_24px_50px_rgba(255,122,0,0.34)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_28px_60px_rgba(255,122,0,0.42)]"
             >
               Plan Smarter With AI
@@ -351,27 +349,5 @@ function BottomSmartPlanBanner() {
         </div>
       </div>
     </section>
-  );
-}
-
-function FooterIcon({
-  href,
-  label,
-  children,
-}: {
-  href: string;
-  label: string;
-  children: ReactNode;
-}) {
-  return (
-    <a
-      href={href}
-      aria-label={label}
-      target="_blank"
-      rel="noreferrer"
-      className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/82 transition hover:border-[#ff7a00]/35 hover:text-[#ffb15f]"
-    >
-      {children}
-    </a>
   );
 }

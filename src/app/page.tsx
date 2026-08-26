@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db/client";
 import HomeHeroClient, { type HomeSlide } from "@/components/home/HomeHeroClient";
-import { parseDestinationRecord } from "@/lib/content/destinations";
+import { getDestinationSectionLabel, parseDestinationRecord } from "@/lib/content/destinations";
 import { parseOfferLiveRecord } from "@/lib/content/offers-live";
 import { parseEventLiveRecord } from "@/lib/content/events-live";
 import { withDatabaseFallback, withExistingTable } from "@/lib/prisma-safe";
@@ -107,7 +107,7 @@ export default async function HomePage() {
       const record = parseDestinationRecord(row as any);
       return {
         title: record.title,
-        country: "Destination",
+        country: getDestinationSectionLabel(record.section),
         description: record.description,
         image: record.imageUrl,
         href: `/destinations/${record.slug}`,
