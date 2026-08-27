@@ -1,6 +1,25 @@
 import { z } from "zod";
 import { contentStatusSchema, normalizeOptionalString, normalizeString, slugifyContent } from "./shared";
 
+function normalizeOptionalDateInput(value: unknown) {
+  if (value instanceof Date && Number.isFinite(value.getTime())) return value;
+  if (typeof value !== "string") return null;
+
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
+    ? new Date(`${trimmed}T23:59:59.999Z`)
+    : new Date(trimmed);
+
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
+function normalizeDateString(value: unknown) {
+  const date = normalizeOptionalDateInput(value);
+  return date ? date.toISOString().slice(0, 10) : "";
+}
+
 export const eventInputSchema = z.object({
   title: z.string().trim().min(1, "Title is required"),
   slug: z.string().trim().optional().nullable(),
@@ -11,6 +30,7 @@ export const eventInputSchema = z.object({
   location: z.string().trim().optional().nullable(),
   country: z.string().trim().optional().nullable(),
   dateRange: z.string().trim().optional().nullable(),
+  endDate: z.string().trim().optional().nullable(),
   description: z.string().trim().optional().nullable(),
   showOnHome: z.boolean().optional(),
   status: contentStatusSchema.optional(),
@@ -27,6 +47,7 @@ export type EventLiveRecord = {
   location: string;
   country: string;
   dateRange: string;
+  endDate: string;
   description: string;
   showOnHome: boolean;
   status: "draft" | "published" | "removed";
@@ -46,6 +67,7 @@ export function parseEventLiveRecord(record: Record<string, unknown>): EventLive
     location: normalizeString(record.location),
     country: normalizeString(record.country),
     dateRange: normalizeString(record.dateRange, "Seasonal details"),
+    endDate: normalizeDateString(record.endDate),
     description: normalizeString(
       record.description,
       "A cinematic event highlight with a direct Gene booking path."
@@ -69,6 +91,7 @@ export function buildEventLiveData(input: unknown) {
     location: normalizeOptionalString(parsed.location),
     country: normalizeOptionalString(parsed.country),
     dateRange: normalizeOptionalString(parsed.dateRange),
+    endDate: normalizeOptionalDateInput(parsed.endDate),
     description: normalizeOptionalString(parsed.description),
     showOnHome: Boolean(parsed.showOnHome),
     status: parsed.status ?? "draft",

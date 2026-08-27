@@ -51,6 +51,8 @@ const fallbackSlides: HomeSlide[] = [
 export const revalidate = 60;
 
 export default async function HomePage() {
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
   let slides = fallbackSlides;
   let destinationCards: Array<{ title: string; country: string; description: string; image: string; href: string; featured?: boolean }> = [];
   let offerCards: Array<{ title: string; subtitle: string; image: string; href: string; cta: string }> = [];
@@ -79,7 +81,15 @@ export default async function HomePage() {
       ),
       withExistingTable(
         "events",
-        () => prisma.event.findMany({ where: { status: "published" }, orderBy: [{ showOnHome: "desc" }, { updatedAt: "desc" }], take: 4 }),
+        () =>
+          prisma.event.findMany({
+            where: {
+              status: "published",
+              OR: [{ endDate: null }, { endDate: { gte: today } }],
+            },
+            orderBy: [{ showOnHome: "desc" }, { updatedAt: "desc" }],
+            take: 4,
+          }),
         [],
       ),
     ]);

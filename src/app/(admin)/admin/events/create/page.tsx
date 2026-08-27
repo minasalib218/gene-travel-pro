@@ -15,6 +15,7 @@ export default function CreateEventPage() {
         location: "",
         country: "",
         dateRange: "",
+        endDate: "",
         description: "",
         showOnHome: false,
         status: "draft",

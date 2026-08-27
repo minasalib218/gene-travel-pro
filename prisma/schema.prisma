@@ -584,6 +584,7 @@ model Event {
   location      String?
   country       String?
   dateRange     String?
+  endDate       DateTime?
   description   String?
   showOnHome    Boolean  @default(false)
   status        String   @default("draft")
@@ -591,6 +592,7 @@ model Event {
   updatedAt     DateTime @updatedAt
 
   @@index([status, updatedAt])
+  @@index([status, endDate, updatedAt])
   @@map("events")
 }
 

@@ -85,6 +85,7 @@ export default function EventEditorForm({
             <Field label="Location"><input value={draft.location} onChange={(e) => setDraft({ ...draft, location: e.target.value })} className="input" /></Field>
             <Field label="Country"><input value={draft.country} onChange={(e) => setDraft({ ...draft, country: e.target.value })} className="input" /></Field>
             <Field label="Date Range"><input value={draft.dateRange} onChange={(e) => setDraft({ ...draft, dateRange: e.target.value })} className="input" /></Field>
+            <Field label="End Date (auto-hide after this date)"><input type="date" value={draft.endDate} onChange={(e) => setDraft({ ...draft, endDate: e.target.value })} className="input" /></Field>
             <AdminImageUploadField label="Card Image" bucket="events" value={draft.imageUrl} onChange={(value) => setDraft({ ...draft, imageUrl: value })} />
             <AdminImageUploadField label="Icon Image" bucket="events" value={draft.iconUrl} onChange={(value) => setDraft({ ...draft, iconUrl: value })} />
             <Field label="Affiliate Link"><input value={draft.affiliateLink} onChange={(e) => setDraft({ ...draft, affiliateLink: e.target.value })} className="input" /></Field>

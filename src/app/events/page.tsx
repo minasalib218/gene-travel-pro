@@ -8,6 +8,8 @@ import { withExistingTable } from "@/lib/prisma-safe";
 export const dynamic = "force-dynamic";
 
 export default async function EventsPage() {
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
   let cards: Array<{
     title: string;
     category: string;
@@ -22,7 +24,10 @@ export default async function EventsPage() {
       "events",
       () =>
         prisma.event.findMany({
-          where: { status: "published" },
+          where: {
+            status: "published",
+            OR: [{ endDate: null }, { endDate: { gte: today } }],
+          },
           orderBy: [{ showOnHome: "desc" }, { updatedAt: "desc" }],
         }),
       [],

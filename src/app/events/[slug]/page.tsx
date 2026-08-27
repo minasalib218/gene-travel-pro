@@ -8,7 +8,17 @@ import { parseEventLiveRecord } from "@/lib/content/events-live";
 export const dynamic = "force-dynamic";
 
 export default async function EventDetailPage({ params }: { params: { slug: string } }) {
-  const row = await prisma.event.findFirst({ where: { slug: params.slug, status: "published" } }).catch(() => null);
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const row = await prisma.event
+    .findFirst({
+      where: {
+        slug: params.slug,
+        status: "published",
+        OR: [{ endDate: null }, { endDate: { gte: today } }],
+      },
+    })
+    .catch(() => null);
   if (!row) return notFound();
   const event = parseEventLiveRecord(row as any);
   const bookingHref = event.affiliateLink ? `/api/affiliate/redirect?type=event&id=${encodeURIComponent(event.id)}` : null;
