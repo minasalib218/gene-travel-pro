@@ -27,10 +27,22 @@ type DestinationShowcaseSection = {
 const sectionIcons = {
   africa: Mountain,
   asia: Landmark,
+  europe: Landmark,
   australia: Waves,
   "north-america": Compass,
   "latin-america": Globe2,
 } as const;
+
+const tripStyleLabelClasses: Record<DestinationTripStyleValue, string> = {
+  adventure: "border-[#ff7a00]/55 bg-[#ff7a00]/30 shadow-[0_0_18px_rgba(255,122,0,0.28)]",
+  "ancient-wonders": "border-[#d9a441]/60 bg-[#9a6617]/35 shadow-[0_0_18px_rgba(217,164,65,0.26)]",
+  "city-and-culture": "border-[#8bd3ff]/60 bg-[#227ba8]/35 shadow-[0_0_18px_rgba(34,123,168,0.26)]",
+  "hiking-trekking": "border-[#7bd88f]/60 bg-[#2f8a4a]/35 shadow-[0_0_18px_rgba(47,138,74,0.26)]",
+  "nature-wildlife": "border-[#9be36d]/60 bg-[#4d8f2e]/35 shadow-[0_0_18px_rgba(77,143,46,0.26)]",
+  "island-hopping": "border-[#69e7ff]/60 bg-[#1e9fb8]/35 shadow-[0_0_18px_rgba(30,159,184,0.26)]",
+  safari: "border-[#f1b45c]/60 bg-[#9a5a1c]/35 shadow-[0_0_18px_rgba(154,90,28,0.28)]",
+  cruise: "border-[#bca7ff]/60 bg-[#5b4ac8]/35 shadow-[0_0_18px_rgba(91,74,200,0.26)]",
+};
 
 export default function DestinationFilterShowcase({ sections }: { sections: DestinationShowcaseSection[] }) {
   const firstSectionWithCards = useMemo(() => sections.find((section) => section.cards.length > 0)?.id || sections[0]?.id || "", [sections]);
@@ -180,7 +192,10 @@ function DestinationCard({ card }: { card: DestinationShowcaseCard }) {
 
       <div className="absolute left-4 top-4 flex max-w-[72%] flex-wrap gap-2">
         {(card.tripStyles?.length ? card.tripStyles : card.featured ? (["adventure"] as DestinationTripStyleValue[]) : []).slice(0, 3).map((tag) => (
-          <span key={tag} className="rounded-full border border-[#ff7a00]/45 bg-[#ff7a00]/20 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_0_18px_rgba(255,122,0,0.24)] backdrop-blur-md">
+          <span
+            key={tag}
+            className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white backdrop-blur-md ${tripStyleLabelClasses[tag]}`}
+          >
             {getDestinationTripStyleLabel(tag)}
           </span>
         ))}

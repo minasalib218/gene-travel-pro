@@ -4,6 +4,7 @@ import { contentStatusSchema, normalizeOptionalString, normalizeString, slugifyC
 export const destinationSections = [
   { value: "africa", label: "Africa" },
   { value: "asia", label: "Asia" },
+  { value: "europe", label: "Europe" },
   { value: "australia", label: "Australia" },
   { value: "north-america", label: "North America" },
   { value: "latin-america", label: "Latin America" },

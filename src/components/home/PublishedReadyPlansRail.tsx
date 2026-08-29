@@ -45,6 +45,9 @@ export async function PublishedReadyPlansRail() {
                 <div className="h-full w-full bg-[radial-gradient(circle_at_top,rgba(255,122,0,0.15),transparent_30%),linear-gradient(180deg,#171717,#0b0b0b)]" />
               )}
               <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent" />
+              <div className="absolute left-4 top-4 rounded-full border border-[#ff7a00]/55 bg-[#ff7a00]/25 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white shadow-[0_0_18px_rgba(255,122,0,0.28)] backdrop-blur-md">
+                Original
+              </div>
             </div>
             <div className="p-4 text-white sm:p-5">
               <div className="text-lg font-semibold">{plan.title}</div>

@@ -16,6 +16,7 @@ import {
 import { useLanguage } from "@/components/i18n/LanguageProvider";
 import LanguageMenu from "@/components/i18n/LanguageMenu";
 import { trackLead, trackSelectItem } from "@/lib/analytics";
+import { getDestinationTripStyleLabel, type DestinationTripStyleValue } from "@/lib/content/destinations";
 
 export type HomeSlide = {
   title: string;
@@ -42,6 +43,7 @@ type DestinationFeatureCard = {
   description: string;
   image: string;
   href: string;
+  tripStyles?: DestinationTripStyleValue[];
   featured?: boolean;
 };
 
@@ -71,6 +73,7 @@ const destinationFeatureCards: DestinationFeatureCard[] = [
     description: "Iconic sunsets, white architecture, and endless blue calm.",
     image: "/bg/home-hero-bottom-optimized.jpg",
     href: "/destinations",
+    tripStyles: ["island-hopping"],
   },
   {
     title: "Milford Sound",
@@ -78,6 +81,7 @@ const destinationFeatureCards: DestinationFeatureCard[] = [
     description: "Breathtaking fjords and dramatic natural beauty.",
     image: "/images/patagonia.jpg",
     href: "/destinations",
+    tripStyles: ["nature-wildlife"],
   },
   {
     title: "Phuket",
@@ -85,6 +89,7 @@ const destinationFeatureCards: DestinationFeatureCard[] = [
     description: "Tropical beaches and vibrant culture await you.",
     image: "/images/middle-bg.jpg",
     href: "/destinations",
+    tripStyles: ["island-hopping", "adventure"],
   },
   {
     title: "Zermatt",
@@ -92,9 +97,21 @@ const destinationFeatureCards: DestinationFeatureCard[] = [
     description: "Where the Alps touch the sky and adventure begins.",
     image: "/images/paris.jpg",
     href: "/destinations",
+    tripStyles: ["hiking-trekking"],
     featured: true,
   },
 ];
+
+const destinationStyleLabelClasses: Record<DestinationTripStyleValue, string> = {
+  adventure: "border-[#ff7a00]/55 bg-[#ff7a00]/30 shadow-[0_0_18px_rgba(255,122,0,0.28)]",
+  "ancient-wonders": "border-[#d9a441]/60 bg-[#9a6617]/35 shadow-[0_0_18px_rgba(217,164,65,0.26)]",
+  "city-and-culture": "border-[#8bd3ff]/60 bg-[#227ba8]/35 shadow-[0_0_18px_rgba(34,123,168,0.26)]",
+  "hiking-trekking": "border-[#7bd88f]/60 bg-[#2f8a4a]/35 shadow-[0_0_18px_rgba(47,138,74,0.26)]",
+  "nature-wildlife": "border-[#9be36d]/60 bg-[#4d8f2e]/35 shadow-[0_0_18px_rgba(77,143,46,0.26)]",
+  "island-hopping": "border-[#69e7ff]/60 bg-[#1e9fb8]/35 shadow-[0_0_18px_rgba(30,159,184,0.26)]",
+  safari: "border-[#f1b45c]/60 bg-[#9a5a1c]/35 shadow-[0_0_18px_rgba(154,90,28,0.28)]",
+  cruise: "border-[#bca7ff]/60 bg-[#5b4ac8]/35 shadow-[0_0_18px_rgba(91,74,200,0.26)]",
+};
 
 const defaultOfferFeatureCards: OfferFeatureCard[] = [
   {
@@ -554,6 +571,9 @@ export default function HomeHeroClient({
                         className="object-cover transition duration-700 group-hover:scale-[1.02]"
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black via-black/18 to-transparent" />
+                      <div className="absolute left-3 top-3 rounded-full border border-[#ff7a00]/55 bg-[#ff7a00]/25 px-2.5 py-1 text-[8px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_0_18px_rgba(255,122,0,0.28)] backdrop-blur-md md:left-4 md:top-4 md:text-[9px]">
+                        Original
+                      </div>
                       <div className="absolute inset-x-0 bottom-0 p-3 md:p-4">
                         <div className="text-[8px] text-white/72 md:text-[9px]">{card.eyebrow}</div>
                         <div className="mt-2 text-[16px] font-semibold uppercase leading-[0.92] text-white md:text-[20px] lg:mt-3 lg:text-[24px]">
@@ -990,6 +1010,16 @@ function DestinationCard({ card }: { card: DestinationFeatureCard }) {
     >
       <Image src={card.image} alt={card.title} fill sizes="(max-width: 768px) 64vw, (max-width: 1024px) 220px, 25vw" quality={74} className="object-cover transition duration-700 group-hover:scale-[1.05]" />
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(10,12,14,0.02)_5%,rgba(9,10,12,0.88)_100%)]" />
+      <div className="absolute left-3 top-3 flex max-w-[72%] flex-wrap gap-1.5 md:left-4 md:top-4 md:gap-2">
+        {(card.tripStyles?.length ? card.tripStyles : card.featured ? (["adventure"] as DestinationTripStyleValue[]) : []).slice(0, 2).map((tag) => (
+          <span
+            key={tag}
+            className={`rounded-full border px-2.5 py-1 text-[8px] font-semibold uppercase tracking-[0.12em] text-white backdrop-blur-md md:px-3 md:text-[9px] ${destinationStyleLabelClasses[tag]}`}
+          >
+            {getDestinationTripStyleLabel(tag)}
+          </span>
+        ))}
+      </div>
       {card.featured ? (
         <div className="absolute right-3 top-3 rounded-full bg-[#ff9a1f] px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_8px_24px_rgba(255,122,0,0.28)] md:right-4 md:top-4 md:px-3 md:text-[10px] md:tracking-[0.16em]">
           Featured
