@@ -1011,7 +1011,7 @@ function DestinationCard({ card }: { card: DestinationFeatureCard }) {
       <Image src={card.image} alt={card.title} fill sizes="(max-width: 768px) 64vw, (max-width: 1024px) 220px, 25vw" quality={74} className="object-cover transition duration-700 group-hover:scale-[1.05]" />
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(10,12,14,0.02)_5%,rgba(9,10,12,0.88)_100%)]" />
       <div className="absolute left-3 top-3 flex max-w-[72%] flex-wrap gap-1.5 md:left-4 md:top-4 md:gap-2">
-        {(card.tripStyles?.length ? card.tripStyles : card.featured ? (["adventure"] as DestinationTripStyleValue[]) : []).slice(0, 2).map((tag) => (
+        {(card.tripStyles?.length ? card.tripStyles : (["adventure"] as DestinationTripStyleValue[])).slice(0, 2).map((tag) => (
           <span
             key={tag}
             className={`rounded-full border px-2.5 py-1 text-[8px] font-semibold uppercase tracking-[0.12em] text-white backdrop-blur-md md:px-3 md:text-[9px] ${destinationStyleLabelClasses[tag]}`}

@@ -191,7 +191,7 @@ function DestinationCard({ card }: { card: DestinationShowcaseCard }) {
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(13,9,7,0.02)_0%,rgba(13,9,7,0.18)_38%,rgba(13,9,7,0.9)_100%)]" />
 
       <div className="absolute left-4 top-4 flex max-w-[72%] flex-wrap gap-2">
-        {(card.tripStyles?.length ? card.tripStyles : card.featured ? (["adventure"] as DestinationTripStyleValue[]) : []).slice(0, 3).map((tag) => (
+        {(card.tripStyles?.length ? card.tripStyles : (["adventure"] as DestinationTripStyleValue[])).slice(0, 3).map((tag) => (
           <span
             key={tag}
             className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white backdrop-blur-md ${tripStyleLabelClasses[tag]}`}
