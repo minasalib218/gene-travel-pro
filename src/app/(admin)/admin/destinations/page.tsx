@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { getDestinationSectionLabel, parseDestinationRecord } from "@/lib/content/destinations";
+import { getDestinationSectionLabel, getDestinationTripStyleLabel, parseDestinationRecord } from "@/lib/content/destinations";
 import { withExistingTable } from "@/lib/prisma-safe";
 
 export const dynamic = "force-dynamic";
@@ -39,15 +39,21 @@ export default async function AdminDestinationsPage() {
             <div className="relative h-48 bg-black/30">
               <img src={item.imageUrl} alt={item.title} className="h-full w-full object-cover" />
               <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent" />
-              <div className="absolute left-4 top-4 rounded-full border border-white/10 bg-black/35 px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-white/72">{item.status}</div>
+              <div className="absolute left-4 top-4 flex max-w-[70%] flex-wrap gap-2">
+                {(item.tripStyles.length ? item.tripStyles : [item.status]).slice(0, 3).map((tag) => (
+                  <span key={tag} className="rounded-full border border-[#ff7a00]/35 bg-[#ff7a00]/18 px-3 py-1 text-[10px] uppercase tracking-[0.16em] text-[#ffd1a3] shadow-[0_0_18px_rgba(255,122,0,0.16)]">
+                    {getDestinationTripStyleLabel(tag) || tag}
+                  </span>
+                ))}
+              </div>
               <div className="absolute right-4 top-4 rounded-full border border-[#ff7a00]/35 bg-[#ff7a00]/18 px-3 py-1 text-[10px] uppercase tracking-[0.16em] text-[#ffd1a3]">
                 {getDestinationSectionLabel(item.section)}
               </div>
               <div className="absolute inset-x-0 bottom-0 p-4">
                 <div className="text-2xl font-semibold text-white">{item.title}</div>
+                <div className="mt-1 text-xs font-medium text-white/62">{item.slug}</div>
               </div>
             </div>
-            <div className="p-5 text-sm text-white/58">{item.description}</div>
           </Link>
         ))}
         {!dbError && destinations.length === 0 ? <div className="rounded-[30px] border border-white/10 bg-black/20 p-6 text-sm text-white/60">No destinations yet.</div> : null}

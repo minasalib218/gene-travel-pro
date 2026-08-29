@@ -1,0 +1,2 @@
+ALTER TABLE "destinations"
+ADD COLUMN IF NOT EXISTS "tripStyles" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];

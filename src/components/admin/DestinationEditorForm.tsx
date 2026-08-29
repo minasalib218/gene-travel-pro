@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { destinationSections, type DestinationRecord } from "@/lib/content/destinations";
+import { destinationSections, destinationTripStyles, type DestinationRecord } from "@/lib/content/destinations";
 import AdminImageUploadField from "./AdminImageUploadField";
 
 export default function DestinationEditorForm({
@@ -16,6 +16,17 @@ export default function DestinationEditorForm({
   const [draft, setDraft] = useState(initial);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const selectedTripStyles = Array.isArray(draft.tripStyles) ? draft.tripStyles : [];
+
+  function toggleTripStyle(value: DestinationRecord["tripStyles"][number]) {
+    setDraft((current) => {
+      const styles = Array.isArray(current.tripStyles) ? current.tripStyles : [];
+      return {
+        ...current,
+        tripStyles: styles.includes(value) ? styles.filter((style) => style !== value) : [...styles, value],
+      };
+    });
+  }
 
   async function save(status?: DestinationRecord["status"]) {
     setSaving(true);
@@ -103,6 +114,28 @@ export default function DestinationEditorForm({
                 <option value="removed">Removed</option>
               </select>
             </Field>
+          </div>
+          <div className="mt-5">
+            <div className="mb-3 text-[11px] uppercase tracking-[0.22em] text-white/44">Trip Style Tags</div>
+            <div className="flex flex-wrap gap-2.5">
+              {destinationTripStyles.map((style) => {
+                const active = selectedTripStyles.includes(style.value);
+                return (
+                  <button
+                    key={style.value}
+                    type="button"
+                    onClick={() => toggleTripStyle(style.value)}
+                    className={`rounded-full border px-3.5 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] transition ${
+                      active
+                        ? "border-[#ff7a00]/60 bg-[#ff7a00] text-black shadow-[0_0_22px_rgba(255,122,0,0.28)]"
+                        : "border-white/10 bg-white/[0.05] text-white/62 hover:border-[#ff7a00]/35 hover:text-white"
+                    }`}
+                  >
+                    {style.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
           <div className="mt-4">
             <Field label="Description"><textarea value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} className="input min-h-[140px]" /></Field>

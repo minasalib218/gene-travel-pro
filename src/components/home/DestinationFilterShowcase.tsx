@@ -4,13 +4,16 @@ import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, Compass, Globe2, Landmark, Mountain, Waves } from "lucide-react";
 import { useMemo, useState } from "react";
+import { destinationTripStyles, getDestinationTripStyleLabel, type DestinationTripStyleValue } from "@/lib/content/destinations";
 
 type DestinationShowcaseCard = {
   title: string;
   country: string;
+  slogan?: string;
   description: string;
   image: string;
   href: string;
+  tripStyles?: DestinationTripStyleValue[];
   featured?: boolean;
 };
 
@@ -32,7 +35,12 @@ const sectionIcons = {
 export default function DestinationFilterShowcase({ sections }: { sections: DestinationShowcaseSection[] }) {
   const firstSectionWithCards = useMemo(() => sections.find((section) => section.cards.length > 0)?.id || sections[0]?.id || "", [sections]);
   const [activeSectionId, setActiveSectionId] = useState(firstSectionWithCards);
+  const [activeTripStyle, setActiveTripStyle] = useState<"all" | DestinationTripStyleValue>("all");
   const activeSection = sections.find((section) => section.id === activeSectionId) || sections[0];
+  const filteredCards =
+    activeTripStyle === "all"
+      ? activeSection?.cards ?? []
+      : activeSection?.cards.filter((card) => card.tripStyles?.includes(activeTripStyle)) ?? [];
 
   if (!activeSection) return null;
 
@@ -77,6 +85,37 @@ export default function DestinationFilterShowcase({ sections }: { sections: Dest
         </div>
       </div>
 
+      <div className="relative overflow-hidden rounded-[30px] border border-black/8 bg-[#17120d] p-3 shadow-[0_22px_60px_rgba(23,18,13,0.16)]">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_0%_50%,rgba(255,122,0,0.22),transparent_28%),linear-gradient(135deg,rgba(255,255,255,0.08),transparent_50%)]" />
+        <div className="relative flex gap-2.5 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <button
+            type="button"
+            onClick={() => setActiveTripStyle("all")}
+            className={`shrink-0 rounded-full border px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] transition ${
+              activeTripStyle === "all"
+                ? "border-[#ff7a00]/70 bg-[#ff7a00] text-black shadow-[0_0_24px_rgba(255,122,0,0.34)]"
+                : "border-white/12 bg-white/[0.06] text-white/68 hover:border-[#ff7a00]/40 hover:text-white"
+            }`}
+          >
+            All Styles
+          </button>
+          {destinationTripStyles.map((style) => (
+            <button
+              key={style.value}
+              type="button"
+              onClick={() => setActiveTripStyle(style.value)}
+              className={`shrink-0 rounded-full border px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] transition ${
+                activeTripStyle === style.value
+                  ? "border-[#ff7a00]/70 bg-[#ff7a00] text-black shadow-[0_0_24px_rgba(255,122,0,0.34)]"
+                  : "border-white/12 bg-white/[0.06] text-white/68 hover:border-[#ff7a00]/40 hover:text-white"
+              }`}
+            >
+              {style.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <section key={activeSection.id} className="animate-[destinationReveal_420ms_ease]">
         <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
           <div>
@@ -89,19 +128,19 @@ export default function DestinationFilterShowcase({ sections }: { sections: Dest
             </h2>
           </div>
           <div className="w-fit rounded-full border border-black/8 bg-white/60 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#5a4533]">
-            {activeSection.cards.length} places
+            {filteredCards.length} places
           </div>
         </div>
 
-        {activeSection.cards.length > 0 ? (
+        {filteredCards.length > 0 ? (
           <div className="grid gap-6 md:grid-cols-2 2xl:grid-cols-4">
-            {activeSection.cards.map((card) => (
+            {filteredCards.map((card) => (
               <DestinationCard key={`${activeSection.id}-${card.title}-${card.href}`} card={card} />
             ))}
           </div>
         ) : (
           <div className="rounded-[32px] border border-black/8 bg-white/60 p-8 text-sm leading-7 text-[#4f4338] shadow-[0_20px_60px_rgba(35,20,8,0.08)] backdrop-blur-md">
-            No published destination cards in this region yet.
+            No published destination cards match this filter yet.
           </div>
         )}
 
@@ -139,16 +178,18 @@ function DestinationCard({ card }: { card: DestinationShowcaseCard }) {
       />
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(13,9,7,0.02)_0%,rgba(13,9,7,0.18)_38%,rgba(13,9,7,0.9)_100%)]" />
 
-      {card.featured ? (
-        <div className="absolute right-4 top-4 rounded-full bg-[#ff7a00] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white shadow-[0_10px_20px_rgba(255,122,0,0.35)]">
-          Featured
-        </div>
-      ) : null}
+      <div className="absolute left-4 top-4 flex max-w-[72%] flex-wrap gap-2">
+        {(card.tripStyles?.length ? card.tripStyles : card.featured ? (["adventure"] as DestinationTripStyleValue[]) : []).slice(0, 3).map((tag) => (
+          <span key={tag} className="rounded-full border border-[#ff7a00]/45 bg-[#ff7a00]/20 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_0_18px_rgba(255,122,0,0.24)] backdrop-blur-md">
+            {getDestinationTripStyleLabel(tag)}
+          </span>
+        ))}
+      </div>
 
       <div className="relative mt-auto flex w-full items-end justify-between gap-4 p-5">
         <div className="max-w-[80%] text-white">
           <div className="text-[30px] font-semibold leading-none tracking-[-0.04em]">{card.title}</div>
-          <div className="mt-2 text-lg text-white/88">{card.country}</div>
+          <div className="mt-2 text-sm font-medium text-white/72">{card.slogan || card.country}</div>
         </div>
 
         <span className="mb-1 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#ff7a00]/65 bg-black/45 text-[#ffb15f] shadow-[0_0_0_rgba(255,122,0,0)] transition duration-300 group-hover:shadow-[0_0_22px_rgba(255,122,0,0.45)]">

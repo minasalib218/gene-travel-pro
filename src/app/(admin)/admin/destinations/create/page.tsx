@@ -13,6 +13,7 @@ export default function CreateDestinationPage() {
         affiliateLink: "",
         description: "",
         section: "asia",
+        tripStyles: [],
         status: "draft",
       }}
     />

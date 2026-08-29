@@ -2,7 +2,7 @@ import { MapPin } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import CollectionShowcasePage from "@/components/home/CollectionShowcasePage";
 import { prisma } from "@/lib/db/client";
-import { destinationSections, getDestinationSectionLabel, parseDestinationRecord, type DestinationSectionValue } from "@/lib/content/destinations";
+import { destinationSections, getDestinationSectionLabel, parseDestinationRecord, type DestinationSectionValue, type DestinationTripStyleValue } from "@/lib/content/destinations";
 import { withExistingTable } from "@/lib/prisma-safe";
 
 export const dynamic = "force-dynamic";
@@ -11,10 +11,12 @@ export default async function DestinationsPage() {
   let cards: Array<{
     title: string;
     country: string;
+    slogan: string;
     description: string;
     image: string;
     href: string;
     section: DestinationSectionValue;
+    tripStyles: DestinationTripStyleValue[];
     featured?: boolean;
   }> = [];
 
@@ -34,10 +36,12 @@ export default async function DestinationsPage() {
       return {
         title: record.title,
         country: getDestinationSectionLabel(record.section),
+        slogan: record.slug,
         description: record.description,
         image: record.imageUrl || "/bg/home-hero-bottom-optimized.jpg",
         href: `/destinations/${encodeURIComponent(record.slug)}`,
         section: record.section,
+        tripStyles: record.tripStyles,
         featured: index === 0,
       };
     });

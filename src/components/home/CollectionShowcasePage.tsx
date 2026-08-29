@@ -2,14 +2,17 @@ import Image from "next/image";
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import { ArrowRight, Globe, MapPin } from "lucide-react";
+import type { DestinationTripStyleValue } from "@/lib/content/destinations";
 import DestinationFilterShowcase from "./DestinationFilterShowcase";
 
 type DestinationShowcaseCard = {
   title: string;
   country: string;
+  slogan?: string;
   description: string;
   image: string;
   href: string;
+  tripStyles?: DestinationTripStyleValue[];
   featured?: boolean;
 };
 
