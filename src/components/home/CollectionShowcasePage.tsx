@@ -95,9 +95,9 @@ export default function CollectionShowcasePage(props: CollectionShowcasePageProp
         <div className="absolute inset-x-0 top-0 h-40 bg-[radial-gradient(circle_at_top,rgba(255,122,0,0.18),transparent_58%)]" />
         <div className="absolute inset-x-0 bottom-0 h-48 bg-[radial-gradient(circle_at_bottom,rgba(40,28,21,0.08),transparent_55%)]" />
 
-        <div className="mx-auto max-w-7xl px-5 pb-24 pt-32 md:px-8">
-          <div className="grid gap-12 xl:grid-cols-[300px_1fr]">
-            <div className="xl:sticky xl:top-28 xl:self-start">
+        <div className="mx-auto w-full max-w-[1560px] px-4 pb-16 pt-28 sm:px-5 md:px-6 md:pb-20 md:pt-32 lg:px-8">
+          <div className="grid min-w-0 gap-8 lg:gap-10 xl:grid-cols-[260px_minmax(0,1fr)] 2xl:grid-cols-[300px_minmax(0,1fr)]">
+            <div className="min-w-0 xl:sticky xl:top-28 xl:self-start">
               <div className="inline-flex items-center gap-3 text-[12px] font-semibold uppercase tracking-[0.22em] text-[#c56b1a]">
                 <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#ff7a00]/18 bg-white/70 shadow-[0_14px_34px_rgba(38,20,9,0.08)]">
                   <Icon size={18} />
@@ -105,11 +105,11 @@ export default function CollectionShowcasePage(props: CollectionShowcasePageProp
                 {props.label}
               </div>
 
-              <h1 className="mt-7 max-w-[10ch] text-5xl font-semibold uppercase leading-[0.9] tracking-[-0.04em] text-[#17120d] md:text-6xl">
+              <h1 className="mt-6 max-w-[12ch] text-[40px] font-semibold uppercase leading-[0.92] tracking-[-0.04em] text-[#17120d] sm:text-5xl md:text-6xl xl:max-w-[10ch]">
                 {props.title}
               </h1>
 
-              <p className="mt-6 max-w-xs text-sm leading-7 text-[#4f4338] md:text-[15px]">
+              <p className="mt-4 max-w-xl text-sm leading-7 text-[#4f4338] md:text-[15px] xl:max-w-xs">
                 {props.description}
               </p>
 
@@ -124,7 +124,7 @@ export default function CollectionShowcasePage(props: CollectionShowcasePageProp
               </Link>
             </div>
 
-            <div className="space-y-7">
+            <div className="min-w-0 space-y-7">
               <div className="h-px bg-[linear-gradient(90deg,rgba(17,17,17,0.08),rgba(17,17,17,0.18),rgba(17,17,17,0.08))]" />
 
               {props.cards.length === 0 ? (

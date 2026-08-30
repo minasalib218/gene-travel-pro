@@ -33,6 +33,17 @@ const sectionIcons = {
   "latin-america": Globe2,
 } as const;
 
+const tripStyleIcons: Record<DestinationTripStyleValue, typeof Compass> = {
+  adventure: Compass,
+  "ancient-wonders": Landmark,
+  "city-and-culture": Globe2,
+  "hiking-trekking": Mountain,
+  "nature-wildlife": Mountain,
+  "island-hopping": Waves,
+  safari: Globe2,
+  cruise: Waves,
+};
+
 const tripStyleLabelClasses: Record<DestinationTripStyleValue, string> = {
   adventure: "border-[#ff7a00]/55 bg-[#ff7a00]/30 shadow-[0_0_18px_rgba(255,122,0,0.28)]",
   "ancient-wonders": "border-[#d9a441]/60 bg-[#9a6617]/35 shadow-[0_0_18px_rgba(217,164,65,0.26)]",
@@ -58,7 +69,7 @@ export default function DestinationFilterShowcase({ sections }: { sections: Dest
 
   return (
     <div className="space-y-7">
-      <div className="relative overflow-hidden rounded-[34px] border border-black/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.7),rgba(255,246,233,0.34))] p-3 shadow-[0_26px_70px_rgba(43,25,10,0.1)] backdrop-blur-xl md:p-4">
+      <div className="relative overflow-hidden rounded-[28px] border border-black/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.7),rgba(255,246,233,0.34))] p-3 shadow-[0_26px_70px_rgba(43,25,10,0.1)] backdrop-blur-xl md:rounded-[34px] md:p-4">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_8%_0%,rgba(255,122,0,0.18),transparent_32%),radial-gradient(circle_at_94%_18%,rgba(20,15,12,0.12),transparent_26%)]" />
         <div className="relative flex gap-3 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {sections.map((section) => {
@@ -70,14 +81,14 @@ export default function DestinationFilterShowcase({ sections }: { sections: Dest
                 key={section.id}
                 type="button"
                 onClick={() => setActiveSectionId(section.id)}
-                className={`group flex min-w-[170px] items-center gap-3 rounded-[22px] border px-4 py-3 text-left transition duration-300 ${
+                className={`group flex min-w-[148px] items-center gap-2.5 rounded-[20px] border px-3 py-3 text-left transition duration-300 sm:min-w-[165px] sm:gap-3 sm:px-4 md:rounded-[22px] ${
                   active
                     ? "border-[#ff7a00]/55 bg-[#17120d] text-white shadow-[0_18px_40px_rgba(255,122,0,0.2)]"
                     : "border-black/8 bg-white/58 text-[#2d241b] hover:border-[#ff7a00]/35 hover:bg-white/78"
-                }`}
-              >
+                  }`}
+                >
                 <span
-                  className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] border text-[#ff7a00] transition duration-300 group-hover:scale-105 ${
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[15px] border text-[#ff7a00] transition duration-300 group-hover:scale-105 sm:h-11 sm:w-11 sm:rounded-[16px] ${
                     active
                       ? "border-[#ff7a00]/50 bg-[#ff7a00]/14 shadow-[0_0_26px_rgba(255,122,0,0.34)]"
                       : "border-[#ff7a00]/20 bg-[#ff7a00]/10 shadow-[0_0_18px_rgba(255,122,0,0.16)]"
@@ -89,7 +100,7 @@ export default function DestinationFilterShowcase({ sections }: { sections: Dest
                   <span className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-[#c56b1a]">
                     {section.eyebrow}
                   </span>
-                  <span className="mt-1 block text-sm font-semibold uppercase tracking-[0.12em]">{section.title}</span>
+                  <span className="mt-1 block text-[12px] font-semibold uppercase tracking-[0.1em] sm:text-sm sm:tracking-[0.12em]">{section.title}</span>
                 </span>
               </button>
             );
@@ -97,34 +108,67 @@ export default function DestinationFilterShowcase({ sections }: { sections: Dest
         </div>
       </div>
 
-      <div className="relative overflow-hidden rounded-[30px] border border-black/8 bg-[#17120d] p-3 shadow-[0_22px_60px_rgba(23,18,13,0.16)]">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_0%_50%,rgba(255,122,0,0.22),transparent_28%),linear-gradient(135deg,rgba(255,255,255,0.08),transparent_50%)]" />
-        <div className="relative flex gap-2.5 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="relative overflow-hidden rounded-[28px] border border-black/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.7),rgba(255,246,233,0.34))] p-3 shadow-[0_26px_70px_rgba(43,25,10,0.1)] backdrop-blur-xl md:rounded-[34px] md:p-4">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_8%_0%,rgba(255,122,0,0.16),transparent_32%),radial-gradient(circle_at_94%_18%,rgba(20,15,12,0.12),transparent_26%)]" />
+        <div className="relative flex gap-3 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <button
             type="button"
             onClick={() => setActiveTripStyle("all")}
-            className={`shrink-0 rounded-full border px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] transition ${
+            className={`group flex min-w-[148px] items-center gap-2.5 rounded-[20px] border px-3 py-3 text-left transition duration-300 sm:min-w-[165px] sm:gap-3 sm:px-4 md:rounded-[22px] ${
               activeTripStyle === "all"
-                ? "border-[#ff7a00]/70 bg-[#ff7a00] text-black shadow-[0_0_24px_rgba(255,122,0,0.34)]"
-                : "border-white/12 bg-white/[0.06] text-white/68 hover:border-[#ff7a00]/40 hover:text-white"
+                ? "border-[#ff7a00]/55 bg-[#17120d] text-white shadow-[0_18px_40px_rgba(255,122,0,0.2)]"
+                : "border-black/8 bg-white/58 text-[#2d241b] hover:border-[#ff7a00]/35 hover:bg-white/78"
             }`}
           >
-            All Styles
-          </button>
-          {destinationTripStyles.map((style) => (
-            <button
-              key={style.value}
-              type="button"
-              onClick={() => setActiveTripStyle(style.value)}
-              className={`shrink-0 rounded-full border px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] transition ${
-                activeTripStyle === style.value
-                  ? "border-[#ff7a00]/70 bg-[#ff7a00] text-black shadow-[0_0_24px_rgba(255,122,0,0.34)]"
-                  : "border-white/12 bg-white/[0.06] text-white/68 hover:border-[#ff7a00]/40 hover:text-white"
+            <span
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[15px] border text-[#ff7a00] transition duration-300 group-hover:scale-105 sm:h-11 sm:w-11 sm:rounded-[16px] ${
+                activeTripStyle === "all"
+                  ? "border-[#ff7a00]/50 bg-[#ff7a00]/14 shadow-[0_0_26px_rgba(255,122,0,0.34)]"
+                  : "border-[#ff7a00]/20 bg-[#ff7a00]/10 shadow-[0_0_18px_rgba(255,122,0,0.16)]"
               }`}
             >
-              {style.label}
-            </button>
-          ))}
+              <Compass size={20} />
+            </span>
+            <span>
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-[#c56b1a]">
+                Filter
+              </span>
+              <span className="mt-1 block text-[12px] font-semibold uppercase tracking-[0.1em] sm:text-sm sm:tracking-[0.12em]">All Styles</span>
+            </span>
+          </button>
+          {destinationTripStyles.map((style) => {
+            const Icon = tripStyleIcons[style.value];
+            const active = activeTripStyle === style.value;
+
+            return (
+              <button
+                key={style.value}
+                type="button"
+                onClick={() => setActiveTripStyle(style.value)}
+                className={`group flex min-w-[168px] items-center gap-2.5 rounded-[20px] border px-3 py-3 text-left transition duration-300 sm:min-w-[190px] sm:gap-3 sm:px-4 md:rounded-[22px] ${
+                  active
+                    ? "border-[#ff7a00]/55 bg-[#17120d] text-white shadow-[0_18px_40px_rgba(255,122,0,0.2)]"
+                    : "border-black/8 bg-white/58 text-[#2d241b] hover:border-[#ff7a00]/35 hover:bg-white/78"
+                }`}
+              >
+                <span
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[15px] border text-[#ff7a00] transition duration-300 group-hover:scale-105 sm:h-11 sm:w-11 sm:rounded-[16px] ${
+                    active
+                      ? "border-[#ff7a00]/50 bg-[#ff7a00]/14 shadow-[0_0_26px_rgba(255,122,0,0.34)]"
+                      : "border-[#ff7a00]/20 bg-[#ff7a00]/10 shadow-[0_0_18px_rgba(255,122,0,0.16)]"
+                  }`}
+                >
+                  <Icon size={20} />
+                </span>
+                <span>
+                  <span className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-[#c56b1a]">
+                    Style
+                  </span>
+                  <span className="mt-1 block text-[12px] font-semibold uppercase tracking-[0.1em] sm:text-sm sm:tracking-[0.12em]">{style.label}</span>
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -145,7 +189,7 @@ export default function DestinationFilterShowcase({ sections }: { sections: Dest
         </div>
 
         {filteredCards.length > 0 ? (
-          <div className="grid gap-6 md:grid-cols-2 2xl:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:gap-5 xl:grid-cols-3 2xl:grid-cols-4">
             {filteredCards.map((card) => (
               <DestinationCard key={`${activeSection.id}-${card.title}-${card.href}`} card={card} />
             ))}
@@ -179,7 +223,7 @@ function DestinationCard({ card }: { card: DestinationShowcaseCard }) {
   return (
     <Link
       href={card.href}
-      className="group relative flex min-h-[430px] overflow-hidden rounded-[30px] border border-black/8 bg-[#1c1815] shadow-[0_28px_60px_rgba(36,24,13,0.14)] transition duration-300 hover:-translate-y-1.5 hover:shadow-[0_34px_70px_rgba(36,24,13,0.2)]"
+      className="group relative flex min-h-[310px] overflow-hidden rounded-[24px] border border-black/8 bg-[#1c1815] shadow-[0_22px_48px_rgba(36,24,13,0.13)] transition duration-300 hover:-translate-y-1.5 hover:shadow-[0_34px_70px_rgba(36,24,13,0.2)] sm:min-h-[360px] md:rounded-[28px] lg:min-h-[400px] 2xl:min-h-[430px] 2xl:rounded-[30px]"
     >
       <Image
         src={card.image}
@@ -190,25 +234,25 @@ function DestinationCard({ card }: { card: DestinationShowcaseCard }) {
       />
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(13,9,7,0.02)_0%,rgba(13,9,7,0.18)_38%,rgba(13,9,7,0.9)_100%)]" />
 
-      <div className="absolute left-4 top-4 flex max-w-[72%] flex-wrap gap-2">
+      <div className="absolute left-3 top-3 flex max-w-[76%] flex-wrap gap-1.5 sm:left-4 sm:top-4 sm:gap-2">
         {(card.tripStyles?.length ? card.tripStyles : (["adventure"] as DestinationTripStyleValue[])).slice(0, 3).map((tag) => (
           <span
             key={tag}
-            className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white backdrop-blur-md ${tripStyleLabelClasses[tag]}`}
+            className={`rounded-full border px-2.5 py-1 text-[8px] font-semibold uppercase tracking-[0.12em] text-white backdrop-blur-md sm:px-3 sm:text-[10px] sm:tracking-[0.14em] ${tripStyleLabelClasses[tag]}`}
           >
             {getDestinationTripStyleLabel(tag)}
           </span>
         ))}
       </div>
 
-      <div className="relative mt-auto flex w-full items-end justify-between gap-4 p-5">
+      <div className="relative mt-auto flex w-full items-end justify-between gap-3 p-4 sm:gap-4 sm:p-5">
         <div className="max-w-[80%] text-white">
-          <div className="text-[30px] font-semibold leading-none tracking-[-0.04em]">{card.title}</div>
-          <div className="mt-2 text-sm font-medium text-white/72">{card.slogan || card.country}</div>
+          <div className="text-[23px] font-semibold leading-none tracking-[-0.04em] sm:text-[28px] 2xl:text-[30px]">{card.title}</div>
+          <div className="mt-2 text-xs font-medium text-white/72 sm:text-sm">{card.slogan || card.country}</div>
         </div>
 
-        <span className="mb-1 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#ff7a00]/65 bg-black/45 text-[#ffb15f] shadow-[0_0_0_rgba(255,122,0,0)] transition duration-300 group-hover:shadow-[0_0_22px_rgba(255,122,0,0.45)]">
-          <ArrowRight size={18} />
+        <span className="mb-1 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#ff7a00]/65 bg-black/45 text-[#ffb15f] shadow-[0_0_0_rgba(255,122,0,0)] transition duration-300 group-hover:shadow-[0_0_22px_rgba(255,122,0,0.45)] sm:h-11 sm:w-11">
+          <ArrowRight size={17} />
         </span>
       </div>
     </Link>
