@@ -1,6 +1,23 @@
 -- Additive Gene Travel profile hub and analytics attribution upgrade.
 -- This migration intentionally avoids destructive operations.
 
+CREATE TABLE IF NOT EXISTS "analytics_events" (
+  "id" TEXT PRIMARY KEY,
+  "userId" TEXT,
+  "sessionId" TEXT NOT NULL,
+  "eventName" TEXT NOT NULL,
+  "eventCategory" TEXT,
+  "pagePath" TEXT,
+  "referrer" TEXT,
+  "country" TEXT,
+  "city" TEXT,
+  "deviceType" TEXT,
+  "browser" TEXT,
+  "os" TEXT,
+  "metadata" JSONB,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 ALTER TABLE "analytics_events" ADD COLUMN IF NOT EXISTS "anonymousId" TEXT;
 ALTER TABLE "analytics_events" ADD COLUMN IF NOT EXISTS "planId" TEXT;
 ALTER TABLE "analytics_events" ADD COLUMN IF NOT EXISTS "readyPlanId" TEXT;
