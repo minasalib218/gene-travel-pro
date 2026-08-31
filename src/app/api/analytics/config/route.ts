@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminSetting } from "@/lib/admin/settings";
 
 export const revalidate = 300;
+export const dynamic = "force-dynamic";
 
 const DEFAULT_META_PIXEL_ID = "1342110297701763";
 
