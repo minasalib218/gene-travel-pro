@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Script from "next/script";
 import { loadAnalyticsConfig } from "@/lib/analytics/config-client";
 
+const DEFAULT_META_PIXEL_ID = "1342110297701763";
+
 declare global {
   interface Window {
     fbq?: (...args: any[]) => void;
@@ -76,11 +78,12 @@ export default function MetaPixel() {
   useEffect(() => {
     loadAnalyticsConfig()
       .then((data) => {
-        setPixelId(data?.config?.metaPixelId || "");
-        setEnabled(Boolean(data?.config?.enableMetaPixel));
+        const configuredPixelId = data?.config?.metaPixelId || DEFAULT_META_PIXEL_ID;
+        setPixelId(configuredPixelId);
+        setEnabled(data?.config?.enableMetaPixel !== false);
       })
       .catch(() => {
-        const fallback = process.env.NEXT_PUBLIC_META_PIXEL_ID || "";
+        const fallback = process.env.NEXT_PUBLIC_META_PIXEL_ID || DEFAULT_META_PIXEL_ID;
         setPixelId(fallback);
         setEnabled(Boolean(fallback));
       });

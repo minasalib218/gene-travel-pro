@@ -3,6 +3,8 @@ import { getAdminSetting } from "@/lib/admin/settings";
 
 export const revalidate = 300;
 
+const DEFAULT_META_PIXEL_ID = "1342110297701763";
+
 export async function GET() {
   try {
     const stored = await getAdminSetting("analytics-settings", {
@@ -13,7 +15,7 @@ export async function GET() {
       enableInternalAnalytics: true,
     });
 
-    const metaPixelId = process.env.NEXT_PUBLIC_META_PIXEL_ID || stored.metaPixelId || "";
+    const metaPixelId = process.env.NEXT_PUBLIC_META_PIXEL_ID || stored.metaPixelId || DEFAULT_META_PIXEL_ID;
     const gaMeasurementId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || stored.gaMeasurementId || "";
 
     return NextResponse.json({
@@ -31,9 +33,9 @@ export async function GET() {
     return NextResponse.json({
       ok: true,
       config: {
-        metaPixelId: process.env.NEXT_PUBLIC_META_PIXEL_ID || "",
+        metaPixelId: process.env.NEXT_PUBLIC_META_PIXEL_ID || DEFAULT_META_PIXEL_ID,
         gaMeasurementId: process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || "",
-        enableMetaPixel: Boolean(process.env.NEXT_PUBLIC_META_PIXEL_ID),
+        enableMetaPixel: Boolean(process.env.NEXT_PUBLIC_META_PIXEL_ID || DEFAULT_META_PIXEL_ID),
         enableGoogleAnalytics: Boolean(process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID),
         enableInternalAnalytics: true,
       },
