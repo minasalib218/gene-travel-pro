@@ -168,7 +168,9 @@ export async function recordAnalyticsEvent(input: AnalyticsInsertInput) {
       `,
     );
   } catch (error) {
-    if (!isMissingTableError(error) && !isDatabaseUnavailableError(error)) {
+    if (isMissingTableError(error)) {
+      await recordLegacyAnalyticsEvent(input, payload);
+    } else if (!isDatabaseUnavailableError(error)) {
       console.error("analytics event insert error:", error);
     }
   }
@@ -233,6 +235,39 @@ export async function recordFunnelEvent(input: {
   } catch (error) {
     if (!isMissingTableError(error) && !isDatabaseUnavailableError(error)) {
       console.error("funnel event insert error:", error);
+    }
+  }
+}
+
+async function recordLegacyAnalyticsEvent(input: AnalyticsInsertInput, payload: string) {
+  try {
+    await prisma.$executeRaw(
+      Prisma.sql`
+        INSERT INTO analytics_events (
+          id, "userId", "sessionId", "eventName", "eventCategory", "pagePath", referrer,
+          country, city, "deviceType", browser, os, metadata, "createdAt"
+        )
+        VALUES (
+          ${crypto.randomUUID()},
+          ${input.userId ?? null},
+          ${input.sessionId},
+          ${input.eventName},
+          ${input.eventCategory ?? null},
+          ${input.pagePath ?? null},
+          ${input.referrer ?? null},
+          ${input.country ?? null},
+          ${input.city ?? null},
+          ${input.deviceType ?? null},
+          ${input.browser ?? null},
+          ${input.os ?? null},
+          ${payload}::jsonb,
+          NOW()
+        )
+      `,
+    );
+  } catch (legacyError) {
+    if (!isMissingTableError(legacyError) && !isDatabaseUnavailableError(legacyError)) {
+      console.error("legacy analytics event insert error:", legacyError);
     }
   }
 }
