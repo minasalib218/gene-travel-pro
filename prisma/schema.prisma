@@ -917,6 +917,7 @@ model AdminSetting {
 model AnalyticsEvent {
   id            String   @id @default(cuid())
   userId        String?
+  anonymousId   String?
   sessionId     String
   eventName     String
   eventCategory String?
@@ -927,13 +928,181 @@ model AnalyticsEvent {
   deviceType    String?
   browser       String?
   os            String?
+  planId        String?
+  readyPlanId   String?
+  itemId        String?
+  destination   String?
+  provider      String?
+  utmSource     String?
+  utmMedium     String?
+  utmCampaign   String?
+  utmContent    String?
+  utmTerm       String?
   metadata      Json?
   createdAt     DateTime @default(now())
 
   @@index([eventName, createdAt])
   @@index([sessionId, createdAt])
+  @@index([anonymousId, createdAt])
+  @@index([userId, createdAt])
   @@index([country, createdAt])
+  @@index([readyPlanId, createdAt])
+  @@index([itemId, createdAt])
+  @@index([provider, createdAt])
+  @@index([utmSource, createdAt])
+  @@index([utmCampaign, createdAt])
   @@map("analytics_events")
+}
+
+model AnalyticsSession {
+  id          String   @id
+  userId      String?
+  anonymousId String?
+  firstPage   String?
+  lastPage    String?
+  referrer    String?
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  utmContent  String?
+  utmTerm     String?
+  pageViews   Int      @default(0)
+  metadata    Json?
+  startedAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([anonymousId])
+  @@index([startedAt])
+  @@map("analytics_sessions")
+}
+
+model UserAttribution {
+  id          String   @id @default(cuid())
+  userId      String?
+  anonymousId String?
+  sessionId   String?
+  firstPage   String?
+  lastPage    String?
+  referrer    String?
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  utmContent  String?
+  utmTerm     String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([anonymousId])
+  @@index([sessionId])
+  @@map("user_attribution")
+}
+
+model FavoriteDestination {
+  id            String   @id @default(cuid())
+  userId        String
+  destinationId String
+  createdAt     DateTime @default(now())
+  metadata      Json?
+
+  @@unique([userId, destinationId])
+  @@index([userId])
+  @@index([destinationId])
+  @@map("favorite_destinations")
+}
+
+model WishlistItem {
+  id          String   @id @default(cuid())
+  userId      String
+  tripName    String?
+  itemType    String
+  title       String
+  provider    String?
+  destination String?
+  imageUrl    String?
+  href        String?
+  status      String   @default("SAVED")
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([userId, itemType])
+  @@map("wishlist_items")
+}
+
+model TravelReminder {
+  id           String    @id @default(cuid())
+  userId       String
+  title        String
+  tripName     String?
+  reminderType String
+  reminderDate DateTime
+  reminderTime String?
+  notes        String?
+  status       String    @default("UPCOMING")
+  metadata     Json?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([userId, reminderDate])
+  @@index([userId, status])
+  @@map("travel_reminders")
+}
+
+model TravelPreference {
+  id                        String   @id @default(cuid())
+  userId                    String   @unique
+  travelStyles              String[] @default([])
+  preferredBudgetMin        Int?
+  preferredBudgetMax        Int?
+  preferredCurrency         String?
+  hotelPreference           String?
+  preferredTransportation   String?
+  preferredRegions          String[] @default([])
+  activityIntensity         String?
+  typicalTripDuration       String?
+  mealPreferences           String[] @default([])
+  accessibilityRequirements String?
+  metadata                  Json?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  @@map("travel_preferences")
+}
+
+model AdminAuditLog {
+  id            String   @id @default(cuid())
+  adminId       String?
+  action        String
+  targetType    String?
+  targetId      String?
+  reason        String?
+  previousState Json?
+  nextState     Json?
+  metadata      Json?
+  createdAt     DateTime @default(now())
+
+  @@index([adminId, createdAt])
+  @@index([action, createdAt])
+  @@map("admin_audit_logs")
+}
+
+model InAppNotification {
+  id        String    @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  message   String?
+  status    String    @default("UNREAD")
+  metadata  Json?
+  createdAt DateTime  @default(now())
+  readAt    DateTime?
+
+  @@index([userId, status, createdAt])
+  @@map("in_app_notifications")
 }
 
 model ConversionEvent {

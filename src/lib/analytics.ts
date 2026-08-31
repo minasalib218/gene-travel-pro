@@ -28,27 +28,43 @@ export type GeneAnalyticsEventName =
   | "checkout_started"
   | "payment_success"
   | "payment_failed"
+  | "search_performed"
   | "ai_planner_started"
+  | "ai_planner_input_saved"
   | "ai_input_completed"
   | "recommendation_viewed"
   | "recommendation_regenerated"
   | "item_replaced"
+  | "day_by_day_viewed"
   | "analysis_started"
   | "analysis_completed"
   | "booking_button_clicked"
+  | "book_now_clicked"
   | "affiliate_redirect_clicked"
   | "summary_viewed"
   | "ready_plan_clicked"
+  | "ready_plan_favorited"
+  | "ready_plan_unfavorited"
   | "destination_clicked"
+  | "destination_saved"
+  | "destination_removed"
+  | "destination_opened"
   | "offer_clicked"
   | "event_clicked"
+  | "wishlist_item_saved"
+  | "wishlist_item_removed"
+  | "reminder_created"
+  | "reminder_updated"
+  | "reminder_completed"
   | "signup_started"
   | "signup_completed"
   | "login_completed";
 
 const SESSION_KEY = "gene:analytics:session-id";
+const ANONYMOUS_KEY = "gene:analytics:anonymous-id";
 const UTM_KEY = "gene:analytics:utm";
 const COOKIE_NAME = "gene_analytics_sid";
+const ANONYMOUS_COOKIE_NAME = "gene_analytics_aid";
 
 function safeWindow() {
   return typeof window !== "undefined" ? window : null;
@@ -81,6 +97,24 @@ export function getAnalyticsSessionId() {
   }
 }
 
+export function getAnalyticsAnonymousId() {
+  const win = safeWindow();
+  if (!win) return "";
+  try {
+    const existing = win.localStorage.getItem(ANONYMOUS_KEY);
+    if (existing) {
+      ensureCookie(ANONYMOUS_COOKIE_NAME, existing);
+      return existing;
+    }
+    const created = win.crypto?.randomUUID?.() ?? `aid_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    win.localStorage.setItem(ANONYMOUS_KEY, created);
+    ensureCookie(ANONYMOUS_COOKIE_NAME, created);
+    return created;
+  } catch {
+    return `aid_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  }
+}
+
 export function captureAttributionFromLocation() {
   const win = safeWindow();
   if (!win) return;
@@ -95,7 +129,14 @@ export function captureAttributionFromLocation() {
     };
     const hasAny = Object.values(utm).some(Boolean);
     if (hasAny) {
-      win.localStorage.setItem(UTM_KEY, JSON.stringify(utm));
+      win.localStorage.setItem(
+        UTM_KEY,
+        JSON.stringify({
+          ...utm,
+          first_landing_page: win.location.pathname,
+          captured_at: new Date().toISOString(),
+        }),
+      );
     }
   } catch {
     // Ignore storage or URL parsing issues.
@@ -124,6 +165,7 @@ function buildPayload(eventName: GeneAnalyticsEventName, pagePath: string, metad
       referrer: typeof document !== "undefined" ? document.referrer || null : null,
     },
     sessionId: getAnalyticsSessionId(),
+    anonymousId: getAnalyticsAnonymousId(),
   };
 }
 
@@ -246,5 +288,5 @@ export function trackLead(eventName: Extract<GeneAnalyticsEventName, "signup_sta
 }
 
 export function trackSearch(searchTerm: string, metadata?: AnalyticsMetadata) {
-  trackAnalyticsEvent("page_view", { searchTerm, ...metadata });
+  trackAnalyticsEvent("search_performed", { searchTerm, ...metadata });
 }

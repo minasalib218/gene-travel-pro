@@ -1,10 +1,13 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { isDatabaseUnavailableError } from "@/lib/prisma-safe";
 
 export const ANALYTICS_SESSION_COOKIE = "gene_analytics_sid";
+export const ANALYTICS_ANONYMOUS_COOKIE = "gene_analytics_aid";
 
 type AnalyticsInsertInput = {
   userId?: string | null;
+  anonymousId?: string | null;
   sessionId: string;
   eventName: string;
   eventCategory?: string | null;
@@ -15,6 +18,16 @@ type AnalyticsInsertInput = {
   deviceType?: string | null;
   browser?: string | null;
   os?: string | null;
+  planId?: string | null;
+  readyPlanId?: string | null;
+  itemId?: string | null;
+  destination?: string | null;
+  provider?: string | null;
+  utmSource?: string | null;
+  utmMedium?: string | null;
+  utmCampaign?: string | null;
+  utmContent?: string | null;
+  utmTerm?: string | null;
   metadata?: Record<string, unknown> | null;
 };
 
@@ -102,18 +115,33 @@ export function getAnalyticsLocation(headers: Headers) {
   };
 }
 
+function cleanMetadata(metadata: Record<string, unknown> | null | undefined) {
+  const source = metadata ?? {};
+  const payload = JSON.stringify(source);
+  if (payload.length <= 8000) return source;
+
+  return {
+    truncated: true,
+    keys: Object.keys(source).slice(0, 50),
+  };
+}
+
 export async function recordAnalyticsEvent(input: AnalyticsInsertInput) {
-  const payload = JSON.stringify(input.metadata ?? {});
+  const safeMetadata = cleanMetadata(input.metadata);
+  const payload = JSON.stringify(safeMetadata);
   try {
     await prisma.$executeRaw(
       Prisma.sql`
         INSERT INTO analytics_events (
-          id, "userId", "sessionId", "eventName", "eventCategory", "pagePath", referrer,
-          country, city, "deviceType", browser, os, metadata, "createdAt"
+          id, "userId", "anonymousId", "sessionId", "eventName", "eventCategory", "pagePath", referrer,
+          country, city, "deviceType", browser, os, "planId", "readyPlanId", "itemId",
+          destination, provider, "utmSource", "utmMedium", "utmCampaign", "utmContent", "utmTerm",
+          metadata, "createdAt"
         )
         VALUES (
           ${crypto.randomUUID()},
           ${input.userId ?? null},
+          ${input.anonymousId ?? null},
           ${input.sessionId},
           ${input.eventName},
           ${input.eventCategory ?? null},
@@ -124,13 +152,23 @@ export async function recordAnalyticsEvent(input: AnalyticsInsertInput) {
           ${input.deviceType ?? null},
           ${input.browser ?? null},
           ${input.os ?? null},
+          ${input.planId ?? null},
+          ${input.readyPlanId ?? null},
+          ${input.itemId ?? null},
+          ${input.destination ?? null},
+          ${input.provider ?? null},
+          ${input.utmSource ?? null},
+          ${input.utmMedium ?? null},
+          ${input.utmCampaign ?? null},
+          ${input.utmContent ?? null},
+          ${input.utmTerm ?? null},
           ${payload}::jsonb,
           NOW()
         )
       `,
     );
   } catch (error) {
-    if (!isMissingTableError(error)) {
+    if (!isMissingTableError(error) && !isDatabaseUnavailableError(error)) {
       console.error("analytics event insert error:", error);
     }
   }
@@ -139,17 +177,34 @@ export async function recordAnalyticsEvent(input: AnalyticsInsertInput) {
   if (funnel) {
     await recordFunnelEvent({
       userId: input.userId ?? null,
+      anonymousId: input.anonymousId ?? null,
       sessionId: input.sessionId,
       stepName: funnel.stepName,
       stepOrder: funnel.stepOrder,
       pagePath: input.pagePath ?? null,
-      metadata: input.metadata ?? {},
+      metadata: safeMetadata,
     });
   }
+
+  await upsertAnalyticsSession({
+    userId: input.userId ?? null,
+    anonymousId: input.anonymousId ?? null,
+    sessionId: input.sessionId,
+    pagePath: input.pagePath ?? null,
+    referrer: input.referrer ?? null,
+    utmSource: input.utmSource ?? null,
+    utmMedium: input.utmMedium ?? null,
+    utmCampaign: input.utmCampaign ?? null,
+    utmContent: input.utmContent ?? null,
+    utmTerm: input.utmTerm ?? null,
+    metadata: safeMetadata,
+    isPageView: input.eventName === "page_view",
+  });
 }
 
 export async function recordFunnelEvent(input: {
   userId?: string | null;
+  anonymousId?: string | null;
   sessionId: string;
   stepName: string;
   stepOrder: number;
@@ -176,8 +231,105 @@ export async function recordFunnelEvent(input: {
       `,
     );
   } catch (error) {
-    if (!isMissingTableError(error)) {
+    if (!isMissingTableError(error) && !isDatabaseUnavailableError(error)) {
       console.error("funnel event insert error:", error);
+    }
+  }
+}
+
+async function upsertAnalyticsSession(input: {
+  userId?: string | null;
+  anonymousId?: string | null;
+  sessionId: string;
+  pagePath?: string | null;
+  referrer?: string | null;
+  utmSource?: string | null;
+  utmMedium?: string | null;
+  utmCampaign?: string | null;
+  utmContent?: string | null;
+  utmTerm?: string | null;
+  metadata?: Record<string, unknown> | null;
+  isPageView?: boolean;
+}) {
+  const payload = JSON.stringify(input.metadata ?? {});
+  try {
+    await prisma.$executeRaw(
+      Prisma.sql`
+        INSERT INTO analytics_sessions (
+          id, "userId", "anonymousId", "firstPage", "lastPage", referrer,
+          "utmSource", "utmMedium", "utmCampaign", "utmContent", "utmTerm",
+          "pageViews", metadata, "startedAt", "lastSeenAt"
+        )
+        VALUES (
+          ${input.sessionId},
+          ${input.userId ?? null},
+          ${input.anonymousId ?? null},
+          ${input.pagePath ?? null},
+          ${input.pagePath ?? null},
+          ${input.referrer ?? null},
+          ${input.utmSource ?? null},
+          ${input.utmMedium ?? null},
+          ${input.utmCampaign ?? null},
+          ${input.utmContent ?? null},
+          ${input.utmTerm ?? null},
+          ${input.isPageView ? 1 : 0},
+          ${payload}::jsonb,
+          NOW(),
+          NOW()
+        )
+        ON CONFLICT (id) DO UPDATE SET
+          "userId" = COALESCE(EXCLUDED."userId", analytics_sessions."userId"),
+          "anonymousId" = COALESCE(EXCLUDED."anonymousId", analytics_sessions."anonymousId"),
+          "lastPage" = COALESCE(EXCLUDED."lastPage", analytics_sessions."lastPage"),
+          referrer = COALESCE(analytics_sessions.referrer, EXCLUDED.referrer),
+          "utmSource" = COALESCE(analytics_sessions."utmSource", EXCLUDED."utmSource"),
+          "utmMedium" = COALESCE(analytics_sessions."utmMedium", EXCLUDED."utmMedium"),
+          "utmCampaign" = COALESCE(analytics_sessions."utmCampaign", EXCLUDED."utmCampaign"),
+          "utmContent" = COALESCE(analytics_sessions."utmContent", EXCLUDED."utmContent"),
+          "utmTerm" = COALESCE(analytics_sessions."utmTerm", EXCLUDED."utmTerm"),
+          "pageViews" = analytics_sessions."pageViews" + ${input.isPageView ? 1 : 0},
+          metadata = COALESCE(EXCLUDED.metadata, analytics_sessions.metadata),
+          "lastSeenAt" = NOW()
+      `,
+    );
+  } catch (error) {
+    if (!isMissingTableError(error) && !isDatabaseUnavailableError(error)) {
+      console.error("analytics session upsert error:", error);
+    }
+  }
+
+  if (input.userId || input.anonymousId) {
+    try {
+      await prisma.$executeRaw(
+        Prisma.sql`
+          INSERT INTO user_attribution (
+            id, "userId", "anonymousId", "sessionId", "firstPage", "lastPage", referrer,
+            "utmSource", "utmMedium", "utmCampaign", "utmContent", "utmTerm", metadata,
+            "createdAt", "updatedAt"
+          )
+          VALUES (
+            ${crypto.randomUUID()},
+            ${input.userId ?? null},
+            ${input.anonymousId ?? null},
+            ${input.sessionId},
+            ${input.pagePath ?? null},
+            ${input.pagePath ?? null},
+            ${input.referrer ?? null},
+            ${input.utmSource ?? null},
+            ${input.utmMedium ?? null},
+            ${input.utmCampaign ?? null},
+            ${input.utmContent ?? null},
+            ${input.utmTerm ?? null},
+            ${payload}::jsonb,
+            NOW(),
+            NOW()
+          )
+        `,
+      );
+    } catch (error) {
+      if (!isMissingTableError(error) && !isDatabaseUnavailableError(error)) {
+        console.error("user attribution insert error:", error);
+      }
     }
   }
 }
@@ -214,7 +366,7 @@ export async function recordConversionEvent(input: {
       `,
     );
   } catch (error) {
-    if (!isMissingTableError(error)) {
+    if (!isMissingTableError(error) && !isDatabaseUnavailableError(error)) {
       console.error("conversion event insert error:", error);
     }
   }
@@ -247,7 +399,7 @@ export async function recordPurchaseTracking(input: PurchaseTrackingInput) {
       `,
     );
   } catch (error) {
-    if (!isMissingTableError(error)) {
+    if (!isMissingTableError(error) && !isDatabaseUnavailableError(error)) {
       console.error("purchase tracking insert error:", error);
     }
   }
