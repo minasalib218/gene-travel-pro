@@ -68,7 +68,8 @@ function SignInInner() {
         source: "signin_page",
         next,
       });
-      router.push(next);
+      router.replace(next);
+      router.refresh();
     } finally {
       setLoading(false);
     }

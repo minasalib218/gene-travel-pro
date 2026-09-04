@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { prisma } from "@/lib/db/client";
+import { getSupabaseAnonKey, getSupabaseUrl } from "@/lib/env";
 
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(email.trim());
@@ -22,9 +24,15 @@ export async function POST(req: Request) {
     const cookieHeader = req.headers.get("cookie") ?? "";
     const res = NextResponse.json({ ok: true });
 
+    const supabaseUrl = getSupabaseUrl();
+    const supabaseAnonKey = getSupabaseAnonKey();
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return NextResponse.json({ ok: false, error: "Supabase auth is not configured." }, { status: 500 });
+    }
+
     const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      supabaseUrl,
+      supabaseAnonKey,
       {
         cookies: {
           getAll() {
@@ -49,9 +57,63 @@ export async function POST(req: Request) {
       },
     );
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      return NextResponse.json({ ok: false, error: error.message }, { status: 401 });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error || !data.user) {
+      return NextResponse.json(
+        { ok: false, error: error?.message || "Invalid email or password." },
+        { status: 401 },
+      );
+    }
+
+    const fullName =
+      (data.user.user_metadata as any)?.full_name ||
+      (data.user.user_metadata as any)?.name ||
+      email.split("@")[0] ||
+      "Traveler";
+
+    try {
+      await prisma.profile.upsert({
+        where: { id: data.user.id },
+        update: {
+          email,
+          fullName,
+          avatarUrl: (data.user.user_metadata as any)?.avatar_url ?? null,
+        },
+        create: {
+          id: data.user.id,
+          email,
+          fullName,
+          avatarUrl: (data.user.user_metadata as any)?.avatar_url ?? null,
+        },
+      });
+
+      await prisma.$transaction([
+        prisma.customerEvent.updateMany({
+          where: { email, userId: null },
+          data: { userId: data.user.id },
+        }),
+        prisma.payment.updateMany({
+          where: { customerEmail: email, userId: null },
+          data: { userId: data.user.id },
+        }),
+        prisma.pass.updateMany({
+          where: { customerEmail: email, userId: null },
+          data: {
+            userId: data.user.id,
+            profileId: data.user.id,
+          },
+        }),
+        prisma.creditLedger.updateMany({
+          where: { customerEmail: email, userId: null },
+          data: { userId: data.user.id },
+        }),
+        prisma.emailLog.updateMany({
+          where: { customerEmail: email, userId: null },
+          data: { userId: data.user.id },
+        }),
+      ]);
+    } catch (profileError) {
+      console.error("customer session profile sync warning:", profileError);
     }
 
     return res;
