@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { cookies, headers } from "next/headers";
+import { redirect } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import { getPlanRules } from "@/lib/credits/planRules";
 
@@ -404,6 +405,8 @@ export default async function ProfilePage() {
   const data = await getProfile();
 
   if (!data) {
+    redirect("/signin?next=/profile");
+
     return (
       <main className="relative min-h-screen overflow-hidden bg-[#090909] text-white">
         <div className="absolute inset-0">

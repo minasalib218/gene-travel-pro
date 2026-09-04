@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useLanguage } from "@/components/i18n/LanguageProvider";
 import { trackAnalyticsEvent } from "@/lib/analytics";
@@ -19,9 +19,11 @@ function isValidEmail(email: string) {
 
 function SignInInner() {
   const { t } = useLanguage();
-  const router = useRouter();
   const search = useSearchParams();
-  const next = useMemo(() => search.get("next") || "/profile", [search]);
+  const next = useMemo(() => {
+    const requested = search.get("next") || "/profile";
+    return requested.startsWith("/") && !requested.startsWith("//") ? requested : "/profile";
+  }, [search]);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -68,8 +70,7 @@ function SignInInner() {
         source: "signin_page",
         next,
       });
-      router.replace(next);
-      router.refresh();
+      window.location.assign(next);
     } finally {
       setLoading(false);
     }
