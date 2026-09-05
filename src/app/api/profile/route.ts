@@ -4,7 +4,7 @@ import { createRouteClient } from "@/lib/supabase/server";
 import { getActivePassOrNull } from "@/lib/require-pass";
 import { getPlanRules } from "@/lib/credits/planRules";
 import { getVerifiedAdmin } from "@/lib/admin/verified";
-import { PassStatus } from "@prisma/client";
+import { PassStatus, Prisma } from "@prisma/client";
 import { tableExists } from "@/lib/prisma-safe";
 
 async function getProfileActivity(userId: string) {
@@ -204,6 +204,36 @@ async function getProfileActivity(userId: string) {
   };
 }
 
+async function getConfirmedTrips(userId: string) {
+  try {
+    return await prisma.$queryRaw<
+      Array<{
+        id: string;
+        title: string;
+        destination: string;
+        createdAt: Date;
+        summaryJson: Record<string, unknown> | null;
+      }>
+    >(
+      Prisma.sql`
+        SELECT
+          "id",
+          "title",
+          COALESCE("destination", '') AS "destination",
+          "createdAt",
+          "summaryJson"
+        FROM "plans"
+        WHERE "userId" = ${userId}
+          AND "status" = 'CONFIRMED'
+        ORDER BY "createdAt" DESC
+      `,
+    );
+  } catch (error) {
+    console.error("Profile confirmed trips warning:", error);
+    return [];
+  }
+}
+
 export async function GET() {
   const verifiedAdmin = await getVerifiedAdmin();
 
@@ -256,11 +286,7 @@ export async function GET() {
   });
 
   if (String(profile.role ?? "").toUpperCase() === "ADMIN") {
-    const confirmedTrips = await prisma.plan.findMany({
-      where: { userId: user.id, status: "CONFIRMED" },
-      orderBy: { createdAt: "desc" },
-      select: { id: true, title: true, destination: true, createdAt: true, summaryJson: true },
-    });
+    const confirmedTrips = await getConfirmedTrips(user.id);
     const savedReadyPlans = await prisma.savedItem.findMany({
       where: { userId: user.id, kind: "READY_PLAN" },
       orderBy: { createdAt: "desc" },
@@ -330,11 +356,7 @@ export async function GET() {
       meta: true,
     },
   });
-  const confirmedTrips = await prisma.plan.findMany({
-    where: { userId: user.id, status: "CONFIRMED" },
-    orderBy: { createdAt: "desc" },
-    select: { id: true, title: true, destination: true, createdAt: true, summaryJson: true },
-  });
+  const confirmedTrips = await getConfirmedTrips(user.id);
   const savedReadyPlans = await prisma.savedItem.findMany({
     where: { userId: user.id, kind: "READY_PLAN" },
     orderBy: { createdAt: "desc" },
