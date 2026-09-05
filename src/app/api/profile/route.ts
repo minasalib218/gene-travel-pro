@@ -234,6 +234,53 @@ async function getConfirmedTrips(userId: string) {
   }
 }
 
+async function getSavedReadyPlans(userId: string) {
+  const exists = await tableExists("saved_items").catch(() => false);
+  if (!exists) return [];
+
+  return prisma.savedItem
+    .findMany({
+      where: { userId, kind: "READY_PLAN" },
+      orderBy: { createdAt: "desc" },
+      take: 12,
+    })
+    .catch((error) => {
+      console.error("Profile saved ready plans warning:", error);
+      return [];
+    });
+}
+
+async function getSavedItems(userId: string) {
+  const exists = await tableExists("saved_items").catch(() => false);
+  if (!exists) return [];
+
+  return prisma.savedItem
+    .findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      take: 12,
+    })
+    .catch((error) => {
+      console.error("Profile saved items warning:", error);
+      return [];
+    });
+}
+
+async function getDeals() {
+  const exists = await tableExists("deals").catch(() => false);
+  if (!exists) return [];
+
+  return prisma.deal
+    .findMany({
+      orderBy: { createdAt: "desc" },
+      take: 6,
+    })
+    .catch((error) => {
+      console.error("Profile deals warning:", error);
+      return [];
+    });
+}
+
 export async function GET() {
   const verifiedAdmin = await getVerifiedAdmin();
 
@@ -287,20 +334,9 @@ export async function GET() {
 
   if (String(profile.role ?? "").toUpperCase() === "ADMIN") {
     const confirmedTrips = await getConfirmedTrips(user.id);
-    const savedReadyPlans = await prisma.savedItem.findMany({
-      where: { userId: user.id, kind: "READY_PLAN" },
-      orderBy: { createdAt: "desc" },
-      take: 12,
-    });
-    const savedItems = await prisma.savedItem.findMany({
-      where: { userId: user.id },
-      orderBy: { createdAt: "desc" },
-      take: 12,
-    });
-    const deals = await prisma.deal.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 6,
-    });
+    const savedReadyPlans = await getSavedReadyPlans(user.id);
+    const savedItems = await getSavedItems(user.id);
+    const deals = await getDeals();
     const activity = await getProfileActivity(user.id);
 
     return NextResponse.json({
@@ -357,20 +393,9 @@ export async function GET() {
     },
   });
   const confirmedTrips = await getConfirmedTrips(user.id);
-  const savedReadyPlans = await prisma.savedItem.findMany({
-    where: { userId: user.id, kind: "READY_PLAN" },
-    orderBy: { createdAt: "desc" },
-    take: 12,
-  });
-  const savedItems = await prisma.savedItem.findMany({
-    where: { userId: user.id },
-    orderBy: { createdAt: "desc" },
-    take: 12,
-  });
-  const deals = await prisma.deal.findMany({
-    orderBy: { createdAt: "desc" },
-    take: 6,
-  });
+  const savedReadyPlans = await getSavedReadyPlans(user.id);
+  const savedItems = await getSavedItems(user.id);
+  const deals = await getDeals();
   const activity = await getProfileActivity(user.id);
 
   const normalizedPlanType =
