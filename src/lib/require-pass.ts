@@ -1,16 +1,21 @@
 import { prisma } from "@/lib/prisma";
-import { PassStatus } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 
 export async function getActivePassOrNull(userId: string) {
   const now = new Date();
-  return prisma.pass.findFirst({
-    where: {
-      userId,
-      status: PassStatus.ACTIVE,
-      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-    },
-    orderBy: [{ expiresAt: "desc" }, { createdAt: "desc" }],
-  });
+  const rows = await prisma.$queryRaw<Array<any>>(
+    Prisma.sql`
+      SELECT *
+      FROM "passes"
+      WHERE "userId" = ${userId}
+        AND "status" = 'ACTIVE'
+        AND ("expiresAt" IS NULL OR "expiresAt" > ${now})
+      ORDER BY "expiresAt" DESC NULLS FIRST, "createdAt" DESC
+      LIMIT 1
+    `,
+  );
+
+  return rows[0] ?? null;
 }
 
 export async function requireActivePass(userId: string) {
