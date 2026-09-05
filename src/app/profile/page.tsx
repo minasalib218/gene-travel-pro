@@ -4,6 +4,7 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import { getPlanRules } from "@/lib/credits/planRules";
+import ProfileDashboard from "@/components/profile/ProfileDashboard";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -454,6 +455,8 @@ export default async function ProfilePage() {
       </main>
     );
   }
+
+  return <ProfileDashboard data={data} />;
 
   const {
     profile,
