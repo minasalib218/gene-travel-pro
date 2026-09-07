@@ -182,6 +182,42 @@ CREATE INDEX IF NOT EXISTS "user_attribution_userId_idx" ON "user_attribution"("
 CREATE INDEX IF NOT EXISTS "user_attribution_anonymousId_idx" ON "user_attribution"("anonymousId");
 CREATE INDEX IF NOT EXISTS "user_attribution_sessionId_idx" ON "user_attribution"("sessionId");
 
+CREATE TABLE IF NOT EXISTS "admin_settings" (
+  "id" TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  "key" TEXT NOT NULL,
+  "value" JSONB NOT NULL DEFAULT '{}'::jsonb,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE "admin_settings" ADD COLUMN IF NOT EXISTS "key" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "admin_settings" ADD COLUMN IF NOT EXISTS "value" JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE "admin_settings" ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE "admin_settings" ADD COLUMN IF NOT EXISTS "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+CREATE UNIQUE INDEX IF NOT EXISTS "admin_settings_key_key" ON "admin_settings"("key");
+
+CREATE TABLE IF NOT EXISTS "accounting_entries" (
+  "id" TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  "day" TEXT NOT NULL,
+  "kind" TEXT NOT NULL,
+  "title" TEXT NOT NULL,
+  "amount" DOUBLE PRECISION NOT NULL,
+  "currency" TEXT NOT NULL DEFAULT 'USD',
+  "meta" JSONB,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE "accounting_entries" ADD COLUMN IF NOT EXISTS "day" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "accounting_entries" ADD COLUMN IF NOT EXISTS "kind" TEXT NOT NULL DEFAULT 'general';
+ALTER TABLE "accounting_entries" ADD COLUMN IF NOT EXISTS "title" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "accounting_entries" ADD COLUMN IF NOT EXISTS "amount" DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE "accounting_entries" ADD COLUMN IF NOT EXISTS "currency" TEXT NOT NULL DEFAULT 'USD';
+ALTER TABLE "accounting_entries" ADD COLUMN IF NOT EXISTS "meta" JSONB;
+ALTER TABLE "accounting_entries" ADD COLUMN IF NOT EXISTS "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+CREATE INDEX IF NOT EXISTS "accounting_entries_day_idx" ON "accounting_entries"("day");
+
 CREATE TABLE IF NOT EXISTS "api_health_logs" (
   "id" TEXT PRIMARY KEY,
   "serviceName" TEXT NOT NULL,
