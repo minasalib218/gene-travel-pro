@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { isDatabaseUnavailableError } from "@/lib/prisma-safe";
+import { isDatabaseUnavailableError, isSchemaDriftError } from "@/lib/prisma-safe";
 
 export const ANALYTICS_SESSION_COOKIE = "gene_analytics_sid";
 export const ANALYTICS_ANONYMOUS_COOKIE = "gene_analytics_aid";
@@ -67,10 +67,11 @@ const FUNNEL_STEP_MAP: Record<string, { stepName: string; stepOrder: number }> =
 
 function isMissingTableError(error: unknown) {
   return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (((error as any).code === "P2021") || ((error as any).code === "P2022"))
+    isSchemaDriftError(error) ||
+    (typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      (((error as any).code === "P2021") || ((error as any).code === "P2022")))
   );
 }
 

@@ -19,7 +19,12 @@ export function createRouteClient() {
       },
       setAll(cookiesToSet) {
         cookiesToSet.forEach(({ name, value, options }) => {
-          cookieStore.set(name, value, options);
+          try {
+            cookieStore.set(name, value, options);
+          } catch {
+            // Server Components can read auth cookies but cannot always mutate them.
+            // Route handlers still set cookies normally through this same helper.
+          }
         });
       },
     },
