@@ -8,9 +8,12 @@ import {
   type PublicPlanType,
 } from "@/lib/payment/passRules";
 import { getPlanRules } from "@/lib/credits/planRules";
-import { verifyLemonWebhook, verifyPaddleWebhook } from "@/lib/payment/webhookSecurity";
+import { verifyLemonWebhook } from "@/lib/payment/webhookSecurity";
+import { recordUserActivity } from "@/lib/customer-activity";
 
-type PaymentProvider = "paddle" | "lemonSqueezy";
+// Paddle remains accepted for legacy payment records/routes. New webhook
+// processing in this module is Lemon Squeezy only.
+type PaymentProvider = "lemonSqueezy" | "paddle";
 type PaymentState = "PENDING" | "PAID" | "FAILED" | "REFUNDED" | "DISPUTED" | "REFUND_REVIEW";
 type PaymentEventKind = "success" | "failed" | "refund" | "subscription_created" | "subscription_updated" | "subscription_cancelled" | "ignored";
 
@@ -19,6 +22,7 @@ type NormalizedWebhookEvent = {
   eventId: string;
   eventType: string;
   kind: PaymentEventKind;
+  paymentId: string | null;
   customerEmail: string | null;
   providerCustomerId: string | null;
   providerOrderId: string | null;
@@ -29,6 +33,7 @@ type NormalizedWebhookEvent = {
   currency: string | null;
   planType: PublicPlanType;
   userId: string | null;
+  sourcePath: string | null;
   payload: Record<string, unknown>;
 };
 
@@ -67,13 +72,6 @@ type PaymentStatusPayload = {
   provider?: string | null;
   providerOrderId?: string | null;
 };
-
-const PADDLE_SUCCESS_EVENTS = new Set(["transaction.paid", "transaction.completed"]);
-const PADDLE_FAILED_EVENTS = new Set(["transaction.payment_failed"]);
-const PADDLE_REFUND_EVENTS = new Set(["transaction.refunded"]);
-const PADDLE_SUBSCRIPTION_CREATED_EVENTS = new Set(["subscription.created"]);
-const PADDLE_SUBSCRIPTION_UPDATED_EVENTS = new Set(["subscription.updated"]);
-const PADDLE_SUBSCRIPTION_CANCELLED_EVENTS = new Set(["subscription.canceled", "subscription.cancelled"]);
 
 const LEMON_SUCCESS_EVENTS = new Set(["order_created", "subscription_payment_success"]);
 const LEMON_FAILED_EVENTS = new Set(["order_payment_failed", "subscription_payment_failed"]);
@@ -118,10 +116,6 @@ function centsToAmount(value: unknown) {
 }
 
 function detectProvider(headers: Headers, payload: Record<string, unknown>): PaymentProvider | null {
-  if (headers.get("paddle-signature") || typeof payload.event_type === "string") {
-    return "paddle";
-  }
-
   const meta = payload.meta;
   if (
     headers.get("x-signature") ||
@@ -134,16 +128,6 @@ function detectProvider(headers: Headers, payload: Record<string, unknown>): Pay
 }
 
 function detectKind(provider: PaymentProvider, eventType: string): PaymentEventKind {
-  if (provider === "paddle") {
-    if (PADDLE_SUCCESS_EVENTS.has(eventType)) return "success";
-    if (PADDLE_FAILED_EVENTS.has(eventType)) return "failed";
-    if (PADDLE_REFUND_EVENTS.has(eventType)) return "refund";
-    if (PADDLE_SUBSCRIPTION_CREATED_EVENTS.has(eventType)) return "subscription_created";
-    if (PADDLE_SUBSCRIPTION_UPDATED_EVENTS.has(eventType)) return "subscription_updated";
-    if (PADDLE_SUBSCRIPTION_CANCELLED_EVENTS.has(eventType)) return "subscription_cancelled";
-    return "ignored";
-  }
-
   if (LEMON_SUCCESS_EVENTS.has(eventType)) return "success";
   if (LEMON_FAILED_EVENTS.has(eventType)) return "failed";
   if (LEMON_REFUND_EVENTS.has(eventType)) return "refund";
@@ -151,52 +135,6 @@ function detectKind(provider: PaymentProvider, eventType: string): PaymentEventK
   if (LEMON_SUBSCRIPTION_UPDATED_EVENTS.has(eventType)) return "subscription_updated";
   if (LEMON_SUBSCRIPTION_CANCELLED_EVENTS.has(eventType)) return "subscription_cancelled";
   return "ignored";
-}
-
-function normalizePaddleEvent(payload: Record<string, unknown>): NormalizedWebhookEvent {
-  const data = (payload.data ?? {}) as Record<string, unknown>;
-  const customData = (data.custom_data ?? {}) as Record<string, unknown>;
-  const details = (data.details ?? {}) as Record<string, unknown>;
-  const totals = (details.totals ?? {}) as Record<string, unknown>;
-  const customer = (data.customer ?? {}) as Record<string, unknown>;
-
-  const eventType = String(payload.event_type ?? "");
-  const eventId = String(payload.event_id ?? payload.notification_id ?? data.id ?? "");
-
-  return {
-    provider: "paddle",
-    eventId,
-    eventType,
-    kind: detectKind("paddle", eventType),
-    customerEmail:
-      (typeof customer.email === "string" ? customer.email : null) ??
-      (typeof customData.customerEmail === "string" ? customData.customerEmail : null),
-    providerCustomerId:
-      typeof data.customer_id === "string"
-        ? data.customer_id
-        : typeof customer.id === "string"
-          ? customer.id
-          : null,
-    providerOrderId: typeof data.id === "string" ? data.id : null,
-    providerCheckoutId:
-      typeof customData.checkoutId === "string"
-        ? customData.checkoutId
-        : typeof data.id === "string"
-          ? data.id
-          : null,
-    providerPaymentId: typeof data.id === "string" ? data.id : null,
-    subscriptionId:
-      typeof data.subscription_id === "string"
-        ? data.subscription_id
-        : typeof data.subscription_id === "number"
-          ? String(data.subscription_id)
-          : null,
-    amount: centsToAmount(totals.grand_total ?? totals.total),
-    currency: typeof data.currency_code === "string" ? data.currency_code : "USD",
-    planType: normalizePlanType(customData.planType),
-    userId: typeof customData.userId === "string" ? customData.userId : null,
-    payload,
-  };
 }
 
 function normalizeLemonEvent(payload: Record<string, unknown>): NormalizedWebhookEvent {
@@ -224,6 +162,9 @@ function normalizeLemonEvent(payload: Record<string, unknown>): NormalizedWebhoo
     eventId,
     eventType,
     kind: detectKind("lemonSqueezy", eventType),
+    paymentId:
+      (typeof customData.paymentId === "string" ? customData.paymentId : null) ??
+      (typeof customData.payment_id === "string" ? customData.payment_id : null),
     customerEmail:
       (typeof attrs.user_email === "string" ? attrs.user_email : null) ??
       (typeof attrs.customer_email === "string" ? attrs.customer_email : null) ??
@@ -257,6 +198,9 @@ function normalizeLemonEvent(payload: Record<string, unknown>): NormalizedWebhoo
     userId:
       (typeof customData.userId === "string" ? customData.userId : null) ??
       (typeof customData.user_id === "string" ? customData.user_id : null),
+    sourcePath:
+      (typeof customData.sourcePath === "string" ? customData.sourcePath : null) ??
+      (typeof customData.source_path === "string" ? customData.source_path : null),
     payload,
   };
 }
@@ -281,8 +225,56 @@ function getAppUrl() {
 function formatPlanLabel(planType: string) {
   if (planType === "agency") return "Agency";
   if (planType === "pro") return "Pro";
-  if (planType === "basic") return "Basic";
-  return "Basic";
+  if (planType === "basic" || planType === "starter") return "Starter";
+  return "Starter";
+}
+
+async function createAgencyAdminNotification(paymentId: string) {
+  const payment = await prisma.payment.findUnique({
+    where: { id: paymentId },
+    select: {
+      id: true,
+      userId: true,
+      customerEmail: true,
+      planType: true,
+      providerOrderId: true,
+      providerPaymentId: true,
+      amount: true,
+      currency: true,
+    },
+  });
+
+  if (!payment || normalizePlanType(payment.planType) !== "agency") {
+    return;
+  }
+
+  const existing = await prisma.adminNotification.findFirst({
+    where: {
+      paymentId,
+      type: "AGENCY_EXPERT_REVIEW",
+    },
+    select: { id: true },
+  });
+
+  if (existing) return;
+
+  const amountLabel =
+    payment.amount !== null && payment.amount !== undefined
+      ? `${payment.amount} ${payment.currency || "USD"}`
+      : "Amount unavailable";
+
+  await prisma.adminNotification.create({
+    data: {
+      type: "AGENCY_EXPERT_REVIEW",
+      userId: payment.userId ?? null,
+      email: payment.customerEmail ?? null,
+      tier: "agency",
+      paymentId: payment.id,
+      orderId: payment.providerOrderId ?? payment.providerPaymentId ?? null,
+      message: `Agency purchase completed for ${payment.customerEmail ?? "unknown customer"} (${amountLabel}). Manual expert revision follow-up is required.`,
+      status: "OPEN",
+    },
+  });
 }
 
 async function sendLoggedEmail(args: {
@@ -408,14 +400,6 @@ async function createCreditLedgerIfMissing(args: {
 }
 
 async function verifyWebhook(provider: PaymentProvider, rawBody: string, headers: Headers) {
-  if (provider === "paddle") {
-    return verifyPaddleWebhook(
-      rawBody,
-      headers.get("paddle-signature"),
-      process.env.PADDLE_WEBHOOK_SECRET || "",
-    );
-  }
-
   return verifyLemonWebhook(
     rawBody,
     headers.get("x-signature"),
@@ -439,7 +423,7 @@ async function normalizeWebhookEvent(
     return { invalid: true as const, provider, payload };
   }
 
-  const event = provider === "paddle" ? normalizePaddleEvent(payload) : normalizeLemonEvent(payload);
+  const event = normalizeLemonEvent(payload);
   if (!event.eventId) {
     throw new Error("Webhook event is missing a stable event id.");
   }
@@ -482,11 +466,10 @@ export async function saveWebhookEvent(args: {
   eventType: string;
   payload: unknown;
 }) {
-  const existing = await prisma.webhookEvent.findUnique({ where: { eventId: args.eventId } });
-  if (existing) return existing;
-
-  return prisma.webhookEvent.create({
-    data: {
+  return prisma.webhookEvent.upsert({
+    where: { eventId: args.eventId },
+    update: {},
+    create: {
       provider: args.provider,
       eventId: args.eventId,
       eventType: args.eventType,
@@ -494,6 +477,23 @@ export async function saveWebhookEvent(args: {
       processed: false,
     },
   });
+}
+
+async function claimWebhookEvent(eventId: string) {
+  const staleBefore = new Date(Date.now() - 5 * 60_000);
+  const claimed = await prisma.webhookEvent.updateMany({
+    where: {
+      eventId,
+      processed: false,
+      OR: [
+        { errorMessage: null },
+        { errorMessage: { not: "PROCESSING" } },
+        { processedAt: { lt: staleBefore } },
+      ],
+    },
+    data: { errorMessage: "PROCESSING", processedAt: new Date() },
+  });
+  return claimed.count === 1;
 }
 
 export async function markWebhookProcessed(eventId: string) {
@@ -513,6 +513,7 @@ export async function markWebhookFailed(eventId: string, errorMessage: string) {
     data: {
       processed: false,
       errorMessage: errorMessage.slice(0, 1000),
+      processedAt: null,
     },
   });
 }
@@ -520,6 +521,19 @@ export async function markWebhookFailed(eventId: string, errorMessage: string) {
 export async function createOrUpdatePayment(input: CreateOrUpdatePaymentInput) {
   const existing = await findPaymentForUpdate(input);
   const userId = await maybeAttachUserId(input);
+
+  if (userId) {
+    await prisma.profile.upsert({
+      where: { id: userId },
+      update: {
+        email: input.customerEmail?.toLowerCase() ?? undefined,
+      },
+      create: {
+        id: userId,
+        email: input.customerEmail?.toLowerCase() ?? null,
+      },
+    });
+  }
 
   if (existing) {
     return prisma.payment.update({
@@ -876,6 +890,7 @@ export async function sendRefundEmail(paymentId: string) {
 
 async function handleSuccessLikeEvent(event: NormalizedWebhookEvent) {
   const payment = await createOrUpdatePayment({
+    paymentId: event.paymentId,
     userId: event.userId,
     customerEmail: event.customerEmail,
     provider: event.provider,
@@ -890,6 +905,7 @@ async function handleSuccessLikeEvent(event: NormalizedWebhookEvent) {
     status: "PAID",
     meta: {
       webhookEventType: event.eventType,
+      sourcePath: event.sourcePath,
     },
   });
 
@@ -903,11 +919,36 @@ async function handleSuccessLikeEvent(event: NormalizedWebhookEvent) {
     amount: getCreditsForPlan(event.planType),
     reason: `${event.eventType} activated ${formatPlanLabel(event.planType)} plan credits.`,
   });
+  await recordUserActivity({
+    userId: payment.userId,
+    event: "PAYMENT_SUCCESS",
+    entityType: "PAYMENT",
+    entityId: payment.id,
+    metadata: {
+      provider: payment.provider,
+      planType: payment.planType,
+      amount: payment.amount,
+      currency: payment.currency,
+      providerOrderId: payment.providerOrderId,
+    },
+  });
+  await recordUserActivity({
+    userId: payment.userId,
+    event: "CREDITS_GRANTED",
+    entityType: "PASS",
+    entityId: pass.id,
+    metadata: {
+      planType: payment.planType,
+      credits: getCreditsForPlan(event.planType),
+    },
+  });
   await sendPaymentSuccessEmail(payment.id);
+  await createAgencyAdminNotification(payment.id);
 }
 
 async function handleFailedEvent(event: NormalizedWebhookEvent) {
   const payment = await createOrUpdatePayment({
+    paymentId: event.paymentId,
     userId: event.userId,
     customerEmail: event.customerEmail,
     provider: event.provider,
@@ -922,15 +963,29 @@ async function handleFailedEvent(event: NormalizedWebhookEvent) {
     status: "FAILED",
     meta: {
       webhookEventType: event.eventType,
+      sourcePath: event.sourcePath,
     },
   });
 
   await markPaymentFailed(payment.id, { webhookEventType: event.eventType });
+  await recordUserActivity({
+    userId: payment.userId,
+    event: "PAYMENT_FAILED",
+    entityType: "PAYMENT",
+    entityId: payment.id,
+    metadata: {
+      provider: payment.provider,
+      planType: payment.planType,
+      amount: payment.amount,
+      currency: payment.currency,
+    },
+  });
   await sendPaymentFailedEmail(payment.id);
 }
 
 async function handleRefundEvent(event: NormalizedWebhookEvent) {
   const payment = await createOrUpdatePayment({
+    paymentId: event.paymentId,
     userId: event.userId,
     customerEmail: event.customerEmail,
     provider: event.provider,
@@ -945,16 +1000,30 @@ async function handleRefundEvent(event: NormalizedWebhookEvent) {
     status: "REFUNDED",
     meta: {
       webhookEventType: event.eventType,
+      sourcePath: event.sourcePath,
     },
   });
 
   await markPaymentRefunded(payment.id, { webhookEventType: event.eventType });
   await removeCreditsAfterRefund(payment.id);
+  await recordUserActivity({
+    userId: payment.userId,
+    event: "PAYMENT_REFUNDED",
+    entityType: "PAYMENT",
+    entityId: payment.id,
+    metadata: {
+      provider: payment.provider,
+      planType: payment.planType,
+      amount: payment.amount,
+      currency: payment.currency,
+    },
+  });
   await sendRefundEmail(payment.id);
 }
 
 async function handleSubscriptionCancelledEvent(event: NormalizedWebhookEvent) {
   const payment = await createOrUpdatePayment({
+    paymentId: event.paymentId,
     userId: event.userId,
     customerEmail: event.customerEmail,
     provider: event.provider,
@@ -1038,6 +1107,10 @@ export async function handlePaymentWebhookRequest(req: Request) {
 
     if (savedEvent.processed) {
       return NextResponse.json({ ok: true, duplicate: true }, { status: 200 });
+    }
+
+    if (!(await claimWebhookEvent(event.eventId))) {
+      return NextResponse.json({ ok: true, duplicate: true, processing: true }, { status: 202 });
     }
 
     await processWebhookEvent(event);

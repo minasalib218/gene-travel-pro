@@ -4,8 +4,10 @@ import type { RecommendationResult } from "@/lib/ai/recommendation-types";
 import { fetchProviderData } from "@/lib/ai/providers";
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: process.env.OPENAI_API_KEY || "missing-openai-api-key",
 });
+
+const OPENAI_RECOMMENDATION_TIMEOUT_MS = 9000;
 
 function formatBudgetLabel(price?: number | null, currency?: string | null) {
   if (typeof price !== "number") return "Price on provider";
@@ -143,6 +145,7 @@ export async function buildRecommendationFromInput(
     kids: payload.trip.kids,
     directOnly: payload.flight.directFlightsOnly,
     interests: payload.activities.interests,
+    fullPayload: payload,
   });
 
   const prompt = `
@@ -226,6 +229,8 @@ Rules:
 `;
 
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), OPENAI_RECOMMENDATION_TIMEOUT_MS);
     const response = await openai.chat.completions.create({
       model: "gpt-4.1-mini",
       temperature: 0.3,
@@ -241,7 +246,9 @@ Rules:
           content: prompt,
         },
       ],
-    });
+    }, {
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeout));
 
     const raw = response.choices[0]?.message?.content;
     if (!raw) {
@@ -250,23 +257,44 @@ Rules:
 
     const parsed = JSON.parse(raw) as RecommendationResult;
 
-    parsed.hotels =
-      parsed.hotels?.map((item) => ({
-        ...item,
-        priceLabel: item.priceLabel || "Price on provider",
-      })) || [];
+    // The model may rank and explain candidates, but it cannot introduce or
+    // alter bookable inventory. Rebuild every result from the server-owned
+    // provider set and discard unknown model output.
+    parsed.hotels = (parsed.hotels || []).flatMap((item) => {
+      const candidate = providerData.hotels.find((entry) => entry.name === item.name);
+      if (!candidate) return [];
+      return [{
+        name: candidate.name,
+        location: candidate.location || payload.trip.destination,
+        priceLabel: formatBudgetLabel(candidate.price, candidate.currency),
+        reason: String(item.reason || "Provider-backed match for your trip preferences."),
+        deepLink: candidate.deepLink ?? null,
+      }];
+    });
 
-    parsed.flights =
-      parsed.flights?.map((item) => ({
-        ...item,
-        priceLabel: item.priceLabel || "Price on provider",
-      })) || [];
+    parsed.flights = (parsed.flights || []).flatMap((item) => {
+      const candidate = providerData.flights.find((entry) => entry.airline === item.name && entry.routeLabel === item.route);
+      if (!candidate) return [];
+      return [{
+        name: candidate.airline,
+        route: candidate.routeLabel,
+        priceLabel: formatBudgetLabel(candidate.price, candidate.currency),
+        reason: String(item.reason || "Provider-backed match for your route preferences."),
+        deepLink: candidate.deepLink ?? null,
+      }];
+    });
 
-    parsed.activities =
-      parsed.activities?.map((item) => ({
-        ...item,
-        priceLabel: item.priceLabel || "Price on provider",
-      })) || [];
+    parsed.activities = (parsed.activities || []).flatMap((item) => {
+      const candidate = providerData.activities.find((entry) => entry.name === item.name);
+      if (!candidate) return [];
+      return [{
+        name: candidate.name,
+        category: candidate.category || "experience",
+        priceLabel: formatBudgetLabel(candidate.price, candidate.currency),
+        reason: String(item.reason || "Provider-backed match for your interests."),
+        deepLink: candidate.deepLink ?? null,
+      }];
+    });
 
     parsed.fitBullets = parsed.fitBullets || [];
     parsed.rawAi = {
@@ -278,6 +306,9 @@ Rules:
     return parsed;
   } catch (error: any) {
     const fallbackReason =
+      error?.name === "AbortError"
+        ? `OpenAI recommendation timed out after ${OPENAI_RECOMMENDATION_TIMEOUT_MS}ms`
+        :
       error?.code === "insufficient_quota"
         ? "OpenAI quota exceeded"
         : error?.message || "AI request failed";

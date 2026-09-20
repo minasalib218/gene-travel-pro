@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createRouteClient } from "@/lib/supabase/server";
-import { consumeCredit, refundConsumedCredit } from "@/lib/credits/creditService";
+import { isAdmin } from "@/lib/access/canUseAi";
 
 export async function POST(req: Request) {
-  let consumedUserId: string | null = null;
-  let consumedAction: string | null = null;
   try {
     const supabase = createRouteClient();
     const { data } = await supabase.auth.getUser();
@@ -13,6 +11,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, code: "NOT_AUTHED" }, { status: 401 });
     }
 
+    const userId = data.user.id;
+    const requesterIsAdmin = await isAdmin(userId);
     const body = await req.json().catch(() => null);
     const planId = String(body?.planId ?? "");
     const kind = String(body?.kind ?? "");
@@ -22,9 +22,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, code: "MISSING_FIELDS" }, { status: 400 });
     }
 
-    const plan = await prisma.plan.findUnique({
-      where: { id: planId },
+    const plan = await prisma.plan.findFirst({
+      where: requesterIsAdmin ? { id: planId } : { id: planId, userId },
       select: {
+        userId: true,
         recommendationJson: true,
         summaryJson: true,
       },
@@ -38,19 +39,6 @@ export async function POST(req: Request) {
     const providerData = recommendation.providerData ?? {};
     const picks = recommendation.picks ?? {};
     const summary = (plan.summaryJson as any) ?? { timeline: [] };
-
-    const actionType =
-      kind === "hotel"
-        ? "REPLACE_HOTEL"
-        : kind === "flight"
-          ? "REPLACE_FLIGHT"
-          : kind === "transport"
-            ? "CHANGE_TRANSPORT"
-            : "REPLACE_ACTIVITY";
-
-    await consumeCredit(data.user.id, actionType as any, { planId, kind, newItemId });
-    consumedUserId = data.user.id;
-    consumedAction = actionType;
 
     if (kind === "hotel") {
       const item = (providerData.hotels ?? []).find((x: any) => x.id === newItemId);
@@ -104,13 +92,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true });
   } catch (e: any) {
-    try {
-      if (consumedUserId && consumedAction) {
-        await refundConsumedCredit(consumedUserId, consumedAction, { reason: "AI_FAILED" });
-      }
-    } catch {}
     return NextResponse.json(
-      { ok: false, code: "INTERNAL_ERROR", message: e?.message || "Unknown error" },
+      { ok: false, code: "INTERNAL_ERROR", message: "Unable to replace this item right now." },
       { status: 500 }
     );
   }

@@ -1,18 +1,17 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/admin/requireAdmin";
+import { getPrismaDatabaseUrl } from "@/lib/env";
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export async function GET() {
-  const raw = process.env.DATABASE_URL || "";
+  if (process.env.NODE_ENV === "production") {
+    return new NextResponse("Not found", { status: 404 });
+  }
 
-  const masked = raw.replace(/:(.*?)@/, ":****@");
+  const admin = await requireAdmin();
+  if (!admin.ok) return new NextResponse("Not found", { status: 404 });
 
-  return NextResponse.json({
-    exists: !!raw,
-    masked,
-    startsWithPostgresql: raw.startsWith("postgresql://"),
-    hasDirectHost: raw.includes(".supabase.co:5432"),
-    hasPoolerHost: raw.includes("pooler.supabase.com"),
-    hasPgbouncerFlag: raw.includes("pgbouncer=true"),
-    hasSchemaFlag: raw.includes("schema="),
-    hasSslmodeFlag: raw.includes("sslmode="),
-  });
+  return NextResponse.json({ ok: true, configured: Boolean(getPrismaDatabaseUrl()) });
 }

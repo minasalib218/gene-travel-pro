@@ -3,7 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { openai } from "@/lib/openai/server";
 import { createRouteClient } from "@/lib/supabase/server";
 import { assertRateLimits } from "@/lib/credits/rateLimitService";
-import { consumeCredit, logAiUsage, refundConsumedCredit } from "@/lib/credits/creditService";
+import { logAiUsage } from "@/lib/credits/creditService";
+import { isAdmin } from "@/lib/access/canUseAi";
 
 function safeJson<T>(text: string): T | null {
   try {
@@ -14,7 +15,6 @@ function safeJson<T>(text: string): T | null {
 }
 
 export async function POST(req: Request) {
-  let consumedUserId: string | null = null;
   try {
     const supabase = createRouteClient();
     const { data } = await supabase.auth.getUser();
@@ -22,6 +22,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, code: "NOT_AUTHED" }, { status: 401 });
     }
 
+    const userId = data.user.id;
+    const requesterIsAdmin = await isAdmin(userId);
     const body = await req.json().catch(() => null);
     const planId = String(body?.planId ?? "");
     const dayIndex = Number(body?.dayIndex ?? 0);
@@ -30,9 +32,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, code: "MISSING_FIELDS" }, { status: 400 });
     }
 
-    const plan = await prisma.plan.findUnique({
-      where: { id: planId },
+    const plan = await prisma.plan.findFirst({
+      where: requesterIsAdmin ? { id: planId } : { id: planId, userId },
       select: {
+        userId: true,
         destination: true,
         inputsJson: true,
         recommendationJson: true,
@@ -47,12 +50,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, code: "PLAN_NOT_FOUND" }, { status: 404 });
     }
 
-    const limitCheck = await assertRateLimits(data.user.id, "GENERATE_DAY_PLAN");
+    const limitCheck = await assertRateLimits(userId, "GENERATE_DAY_PLAN");
     if (!limitCheck.ok) {
       return NextResponse.json({ ok: false, code: limitCheck.code, message: limitCheck.message }, { status: 429 });
     }
-    await consumeCredit(data.user.id, "GENERATE_DAY_PLAN", { planId, dayIndex });
-    consumedUserId = data.user.id;
 
     const recommendation = (plan.recommendationJson as any) ?? {};
     const summary = (plan.summaryJson as any) ?? { timeline: [] };
@@ -115,7 +116,7 @@ ${JSON.stringify(payload)}
       return NextResponse.json({ ok: false, code: "AI_BAD_JSON" }, { status: 500 });
     }
 
-    await logAiUsage(data.user.id, plan.passId ?? null, "GENERATE_DAY_PLAN", {
+    await logAiUsage(userId, plan.passId ?? null, "GENERATE_DAY_PLAN", {
       inputTokens: (ai as any)?.usage?.input_tokens ?? null,
       outputTokens: (ai as any)?.usage?.output_tokens ?? null,
       totalTokens: (ai as any)?.usage?.total_tokens ?? null,
@@ -135,13 +136,8 @@ ${JSON.stringify(payload)}
 
     return NextResponse.json({ ok: true });
   } catch (e: any) {
-    try {
-      if (consumedUserId) {
-        await refundConsumedCredit(consumedUserId, "GENERATE_DAY_PLAN", { reason: "AI_FAILED" });
-      }
-    } catch {}
     return NextResponse.json(
-      { ok: false, code: "INTERNAL_ERROR", message: e?.message || "Unknown error" },
+      { ok: false, code: "INTERNAL_ERROR", message: "Unable to rebuild this day right now." },
       { status: 500 }
     );
   }

@@ -1,12 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createRouteClient } from "@/lib/supabase/server";
-import { consumeCredit, refundConsumedCredit } from "@/lib/credits/creditService";
 import { ANALYTICS_SESSION_COOKIE, getAnalyticsLocation, parseUserAgent, recordAnalyticsEvent } from "@/lib/analytics-server";
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  let consumedUserId: string | null = null;
-  let consumedAction: string | null = null;
   try {
     const supabase = createRouteClient();
     const { data } = await supabase.auth.getUser();
@@ -33,21 +30,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (!arr[index]) {
       return NextResponse.json({ ok: false, code: "INDEX_OUT_OF_RANGE" }, { status: 400 });
     }
-
-    const actionType =
-      section === "hotels"
-        ? "REPLACE_HOTEL"
-        : section === "flights"
-          ? "REPLACE_FLIGHT"
-          : "REPLACE_ACTIVITY";
-
-    await consumeCredit(data.user.id, actionType as "REPLACE_HOTEL" | "REPLACE_FLIGHT" | "REPLACE_ACTIVITY", {
-      planId: plan.id,
-      section,
-      index,
-    });
-    consumedUserId = data.user.id;
-    consumedAction = actionType;
 
     arr[index] = newItem;
     rec[section] = arr;
@@ -87,15 +69,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
     return NextResponse.json({ ok: true });
   } catch (e: any) {
-    try {
-      if (consumedUserId && consumedAction) {
-        await refundConsumedCredit(consumedUserId, consumedAction, { reason: "AI_FAILED", planId: params.id });
-      }
-    } catch {
-      // keep original failure stable
-    }
     return NextResponse.json(
-      { ok: false, code: "INTERNAL_ERROR", message: e?.message || "Unknown error" },
+      { ok: false, code: "INTERNAL_ERROR", message: "Unable to replace this item right now." },
       { status: 500 },
     );
   }

@@ -17,6 +17,7 @@ import {
   normalizePlanType,
 } from "@/lib/credits/planRules";
 import { isAdmin } from "@/lib/access/canUseAi";
+import { recordUserActivity } from "@/lib/customer-activity";
 
 export class CreditError extends Error {
   code: string;
@@ -213,10 +214,7 @@ export async function canUseAction(
   }
 
   if (isEditCreditAction(actionType)) {
-    if (status.editCreditsRemaining < 1) {
-      throw new CreditError("NO_EDIT_CREDITS", "You used all your edit actions. You can still view and book your saved plan.");
-    }
-    return { allowed: true as const, pass, creditType: "EDIT" as const, status, blockedReason: null };
+    return { allowed: true as const, pass, creditType: "FREE" as const, status, blockedReason: null };
   }
 
   return { allowed: true as const, pass, creditType: "FREE" as const, status, blockedReason: null };
@@ -258,25 +256,51 @@ export async function consumeMainCredit(userId: string, actionType: MainCreditAc
     return { pass: null, status: buildAdminStatus() };
   }
 
-  return prisma.$transaction(async (tx) => {
+  const idempotencyKey = typeof metadata?.idempotencyKey === "string" ? metadata.idempotencyKey.trim() : "";
+  const runTransaction = () => prisma.$transaction(async (tx) => {
     const pass = await tx.pass.findFirst({
       where: { userId, status: PassStatus.ACTIVE },
       orderBy: [{ expiresAt: "desc" }, { createdAt: "desc" }],
     });
     if (!pass) throw new CreditError("NO_ACTIVE_PASS", "A paid Gene pass is required to continue.");
 
+    if (idempotencyKey) {
+      const existing = await tx.tierActionLog.findUnique({ where: { idempotencyKey } });
+      if (existing) {
+        return { pass, status: buildStatus(pass), alreadyProcessed: true };
+      }
+      await tx.tierActionLog.create({
+        data: {
+          userId,
+          passId: pass.id,
+          idempotencyKey,
+          actionType,
+          planId: typeof metadata?.planId === "string" ? metadata.planId : null,
+          meta: (metadata ?? undefined) as Prisma.InputJsonValue | undefined,
+        },
+      });
+    }
+
     const before = pass.mainCreditsTotal - pass.mainCreditsUsed;
     if (before < 1) {
       throw new CreditError("NO_MAIN_CREDITS", "You used all your main AI credits. Upgrade your pass or buy more credits to generate another plan.");
     }
 
-    const updated = await tx.pass.update({
-      where: { id: pass.id },
+    const claimed = await tx.pass.updateMany({
+      where: {
+        id: pass.id,
+        mainCreditsUsed: { lt: pass.mainCreditsTotal },
+      },
       data: {
         mainCreditsUsed: { increment: 1 },
         tierActionsUsed: { increment: 1 },
       },
     });
+    if (!claimed.count) {
+      throw new CreditError("NO_MAIN_CREDITS", "You used all your main AI credits. Upgrade your pass or buy more credits to generate another plan.");
+    }
+
+    const updated = await tx.pass.findUniqueOrThrow({ where: { id: pass.id } });
 
     const after = before - 1;
     await createLedgerRecord(tx, {
@@ -292,8 +316,28 @@ export async function consumeMainCredit(userId: string, actionType: MainCreditAc
       metadata,
     });
 
-    return { pass: updated, status: buildStatus(updated) };
+    return { pass: updated, status: buildStatus(updated), alreadyProcessed: false };
   });
+  let result;
+  try {
+    result = await runTransaction();
+  } catch (error) {
+    // A concurrent request with the same generation key won the unique claim.
+    if (idempotencyKey && error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      const pass = await assertActivePass(userId);
+      return { pass, status: buildStatus(pass), alreadyProcessed: true };
+    }
+    throw error;
+  }
+  if (result.alreadyProcessed) return result;
+  await recordUserActivity({
+    userId,
+    event: "CREDIT_USED",
+    entityType: "PASS",
+    entityId: result.pass.id,
+    metadata: { actionType, creditType: "MAIN", ...metadata },
+  });
+  return result;
 }
 
 export async function consumeEditCredit(userId: string, actionType: EditCreditAction, metadata?: JsonMetadata) {
@@ -303,7 +347,7 @@ export async function consumeEditCredit(userId: string, actionType: EditCreditAc
     return { pass: null, status: buildAdminStatus() };
   }
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const pass = await tx.pass.findFirst({
       where: { userId, status: PassStatus.ACTIVE },
       orderBy: [{ expiresAt: "desc" }, { createdAt: "desc" }],
@@ -315,12 +359,20 @@ export async function consumeEditCredit(userId: string, actionType: EditCreditAc
       throw new CreditError("NO_EDIT_CREDITS", "You used all your edit actions. You can still view and book your saved plan.");
     }
 
-    const updated = await tx.pass.update({
-      where: { id: pass.id },
+    const claimed = await tx.pass.updateMany({
+      where: {
+        id: pass.id,
+        editCreditsUsed: { lt: pass.editCreditsTotal },
+      },
       data: {
         editCreditsUsed: { increment: 1 },
       },
     });
+    if (!claimed.count) {
+      throw new CreditError("NO_EDIT_CREDITS", "You used all your edit actions. You can still view and book your saved plan.");
+    }
+
+    const updated = await tx.pass.findUniqueOrThrow({ where: { id: pass.id } });
 
     const after = before - 1;
     await createLedgerRecord(tx, {
@@ -338,6 +390,14 @@ export async function consumeEditCredit(userId: string, actionType: EditCreditAc
 
     return { pass: updated, status: buildStatus(updated) };
   });
+  await recordUserActivity({
+    userId,
+    event: "CREDIT_USED",
+    entityType: "PASS",
+    entityId: result.pass.id,
+    metadata: { actionType, creditType: "EDIT", ...metadata },
+  });
+  return result;
 }
 
 export async function consumeWhatIf(userId: string, metadata?: JsonMetadata) {
@@ -356,23 +416,29 @@ export async function consumeWhatIf(userId: string, metadata?: JsonMetadata) {
 
     const freeBefore = Math.max(pass.whatIfFreeTotal - pass.whatIfFreeUsed, 0);
     if (freeBefore > 0) {
-      const updated = await tx.pass.update({
-        where: { id: pass.id },
+      const claimed = await tx.pass.updateMany({
+        where: {
+          id: pass.id,
+          whatIfFreeUsed: { lt: pass.whatIfFreeTotal },
+        },
         data: { whatIfFreeUsed: { increment: 1 } },
       });
-      await createLedgerRecord(tx, {
-        userId,
-        passId: pass.id,
-        customerEmail: pass.customerEmail,
-        actionType: "EXTRA_WHAT_IF_SIMULATION",
-        creditType: "WHAT_IF_FREE",
-        amount: -1,
-        balanceBefore: freeBefore,
-        balanceAfter: freeBefore - 1,
-        reason: "Used one included What If simulation.",
-        metadata,
-      });
-      return { pass: updated, status: buildStatus(updated) };
+      if (claimed.count) {
+        const updated = await tx.pass.findUniqueOrThrow({ where: { id: pass.id } });
+        await createLedgerRecord(tx, {
+          userId,
+          passId: pass.id,
+          customerEmail: pass.customerEmail,
+          actionType: "EXTRA_WHAT_IF_SIMULATION",
+          creditType: "WHAT_IF_FREE",
+          amount: -1,
+          balanceBefore: freeBefore,
+          balanceAfter: freeBefore - 1,
+          reason: "Used one included What If simulation.",
+          metadata,
+        });
+        return { pass: updated, status: buildStatus(updated) };
+      }
     }
 
     const before = pass.mainCreditsTotal - pass.mainCreditsUsed;
@@ -380,13 +446,21 @@ export async function consumeWhatIf(userId: string, metadata?: JsonMetadata) {
       throw new CreditError("NO_MAIN_CREDITS", "You used all your main AI credits. Upgrade your pass or buy more credits to generate another plan.");
     }
 
-    const updated = await tx.pass.update({
-      where: { id: pass.id },
+    const claimed = await tx.pass.updateMany({
+      where: {
+        id: pass.id,
+        mainCreditsUsed: { lt: pass.mainCreditsTotal },
+      },
       data: {
         mainCreditsUsed: { increment: 1 },
         tierActionsUsed: { increment: 1 },
       },
     });
+    if (!claimed.count) {
+      throw new CreditError("NO_MAIN_CREDITS", "You used all your main AI credits. Upgrade your pass or buy more credits to generate another plan.");
+    }
+
+    const updated = await tx.pass.findUniqueOrThrow({ where: { id: pass.id } });
     await createLedgerRecord(tx, {
       userId,
       passId: pass.id,
@@ -427,10 +501,18 @@ export async function consumeChatMessage(userId: string, metadata?: JsonMetadata
       throw new CreditError("CHAT_LIMIT_REACHED", "Your companion chat limit has been reached for this pass.");
     }
 
-    const updated = await tx.pass.update({
-      where: { id: pass.id },
+    const claimed = await tx.pass.updateMany({
+      where: {
+        id: pass.id,
+        chatMessagesUsed: { lt: pass.chatMessagesTotal ?? rules.chatMessagesTotal ?? 0 },
+      },
       data: { chatMessagesUsed: { increment: 1 } },
     });
+    if (!claimed.count) {
+      throw new CreditError("CHAT_LIMIT_REACHED", "Your companion chat limit has been reached for this pass.");
+    }
+
+    const updated = await tx.pass.findUniqueOrThrow({ where: { id: pass.id } });
     await createLedgerRecord(tx, {
       userId,
       passId: pass.id,
@@ -466,10 +548,18 @@ export async function consumeExpertReview(userId: string, metadata?: JsonMetadat
       throw new CreditError("EXPERT_LIMIT_REACHED", "Your included expert review has already been used.");
     }
 
-    const updated = await tx.pass.update({
-      where: { id: pass.id },
+    const claimed = await tx.pass.updateMany({
+      where: {
+        id: pass.id,
+        expertReviewUsed: { lt: pass.expertReviewTotal },
+      },
       data: { expertReviewUsed: { increment: 1 } },
     });
+    if (!claimed.count) {
+      throw new CreditError("EXPERT_LIMIT_REACHED", "Your included expert review has already been used.");
+    }
+
+    const updated = await tx.pass.findUniqueOrThrow({ where: { id: pass.id } });
     await createLedgerRecord(tx, {
       userId,
       passId: pass.id,
@@ -493,11 +583,14 @@ export async function consumeCredit(userId: string, actionType: CreditActionType
   if (isFreeAction(actionType)) {
     return { free: true as const, status: await getCreditStatus(userId) };
   }
+  // Existing-plan edits are free. Only creation of a new full timeline is billable.
+  if (isEditCreditAction(actionType)) {
+    return { free: true as const, status: await getCreditStatus(userId) };
+  }
   if (actionType === "EXTRA_WHAT_IF_SIMULATION") return consumeWhatIf(userId, metadata);
   if (actionType === "CHAT_MESSAGE") return consumeChatMessage(userId, metadata);
   if (actionType === "EXPERT_REVIEW") return consumeExpertReview(userId, metadata);
   if (isMainCreditAction(actionType)) return consumeMainCredit(userId, actionType, metadata);
-  if (isEditCreditAction(actionType)) return consumeEditCredit(userId, actionType, metadata);
   return { free: true as const, status: await getCreditStatus(userId) };
 }
 

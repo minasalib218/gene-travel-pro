@@ -16,14 +16,15 @@ export function buildDeepLink({ provider, rawUrl }: BuildDeepLinkArgs): string {
     }
 
     case "viator": {
-      const pid = process.env.VIATOR_PARTNER_ID;
-      if (!pid) return rawUrl;
-      const join = rawUrl.includes("?") ? "&" : "?";
-      return `${rawUrl}${join}pid=${encodeURIComponent(pid)}`;
+      // Viator's API productUrl is already attributed. Their API contract
+      // requires partners to use the complete URL without modification.
+      return rawUrl;
     }
 
     case "travelpayouts": {
-      const marker = process.env.TRAVELPAYOUTS_MARKER;
+      const marker =
+        process.env.TRAVELPAYOUTS_MARKER_AVIA ||
+        process.env.TRAVELPAYOUTS_MARKER;
       if (!marker) return rawUrl;
       const join = rawUrl.includes("?") ? "&" : "?";
       return `${rawUrl}${join}marker=${encodeURIComponent(marker)}`;

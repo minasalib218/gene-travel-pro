@@ -7,6 +7,10 @@ import { aggregateProviderData } from "@/lib/providers/aggregate";
 import { isAdmin } from "@/lib/access/canUseAi";
 import { assertRateLimits } from "@/lib/credits/rateLimitService";
 import { consumeCredit, logAiUsage, refundConsumedCredit } from "@/lib/credits/creditService";
+import { Prisma } from "@prisma/client";
+import { ensureUserProfile } from "@/lib/profile/ensureUserProfile";
+import { recordUserActivity } from "@/lib/customer-activity";
+import { getAnalyticsLocation, parseUserAgent, recordAnalyticsEvent } from "@/lib/analytics-server";
 
 function pickJson<T>(text: string): T | null {
   try {
@@ -20,111 +24,104 @@ function uuidFallback() {
   return String(Date.now()) + "-" + Math.random().toString(16).slice(2);
 }
 
+function safeGenerationMessage(code: string) {
+  if (code === "NO_ACTIVE_PASS") return "Please choose a plan to generate a new AI trip.";
+  if (code === "NO_MAIN_CREDITS") return "You have used all your main AI credits. Upgrade or add credits to generate another plan.";
+  if (code === "AI_BAD_JSON") return "We could not finish this AI plan cleanly. Please try generating it again.";
+  if (code === "GENERATION_ALREADY_PROCESSING") return "This plan generation is already processing. Please wait a moment.";
+  if (code === "NO_PROVIDER_RESULTS") return "We could not load real travel options for this trip yet. Please try another destination or date.";
+  return "We could not generate your plan right now. Please try again.";
+}
+
+function generationError(code: string, message: string, status = 500) {
+  const error = new Error(message) as Error & { code: string; status: number };
+  error.code = code;
+  error.status = status;
+  return error;
+}
+
+function providerCounts(providerData: Awaited<ReturnType<typeof aggregateProviderData>>) {
+  return {
+    hotels: providerData.hotels.length,
+    activities: providerData.activities.length,
+    transports: providerData.transports.length,
+    flights: providerData.flights.length,
+  };
+}
+
+async function recordGenerationEvent(args: {
+  req: Request;
+  userId: string;
+  eventName: "ai_generation_started" | "ai_generation_completed" | "ai_generation_failed" | "credit_consumed";
+  destination?: string | null;
+  planId?: string | null;
+  metadata?: Record<string, unknown>;
+}) {
+  const ua = parseUserAgent(args.req.headers.get("user-agent"));
+  const location = getAnalyticsLocation(args.req.headers);
+  await recordAnalyticsEvent({
+    userId: args.userId,
+    sessionId: String(args.metadata?.generationRequestId ?? crypto.randomUUID()),
+    eventName: args.eventName,
+    eventCategory: "ai",
+    pagePath: "/ai-planner",
+    destination: args.destination ?? null,
+    planId: args.planId ?? null,
+    country: location.country,
+    city: location.city,
+    deviceType: ua.deviceType,
+    browser: ua.browser,
+    os: ua.os,
+    metadata: args.metadata ?? {},
+  });
+}
+
+async function findExistingGeneration(userId: string, generationRequestId: string) {
+  return prisma.plan.findFirst({
+    where: {
+      userId,
+      summaryJson: {
+        path: ["generationRequestId"],
+        equals: generationRequestId,
+      } as any,
+    },
+    select: { id: true },
+  });
+}
+
+async function hasExistingCreditCharge(userId: string, generationRequestId: string) {
+  const existing = await prisma.creditLedger.findFirst({
+    where: {
+      userId,
+      actionType: "GENERATE_DAY_PLAN",
+      amount: -1,
+      metadata: {
+        path: ["idempotencyKey"],
+        equals: generationRequestId,
+      } as any,
+    },
+    select: { id: true },
+  });
+  return Boolean(existing);
+}
+
 export async function POST(req: Request) {
   let consumedUserId: string | null = null;
-  try {
-    // ✅ ENV admin bypass (must be inside POST)
-    const cookie = req.headers.get("cookie") ?? "";
-    const isEnvAdmin = cookie.includes("admin_auth=1");
+  let generationRequestId: string | null = null;
+  let analyticsUserId: string | null = null;
+  let analyticsDestination: string | null = null;
 
+  try {
     const body = await req.json().catch(() => null);
 
-    // ✅ Trial path for ENV admin (no Supabase required)
-    if (isEnvAdmin) {
-      const destination = String(body?.destination ?? "Trial Destination");
-      const startDate = String(body?.startDate ?? new Date().toISOString());
-      const endDate = String(body?.endDate ?? new Date().toISOString());
-      const inputs = body?.inputs ?? body ?? null;
-
-      // IMPORTANT:
-      // If your DB has FK from plans.userId -> profiles.id,
-      // set ADMIN_USER_ID in .env.local to a real Supabase UUID.
-      const adminUserId = process.env.ADMIN_USER_ID || "trial-admin";
-
-      // try to provision profile (safe if exists)
-      try {
-        await prisma.profile.upsert({
-          where: { id: adminUserId },
-          update: {},
-          create: { id: adminUserId, email: process.env.ADMIN_EMAIL ?? null },
-          select: { id: true },
-        });
-      } catch {
-        // ignore - if FK enforced and adminUserId isn't valid, this will fail later.
-      }
-
-      // ✅ Make provider-like stub so UI can render
-      const providerData = {
-        hotels: [
-          { id: "h1", name: "Trial Hotel", deeplink: "#", imageUrl: "", meta: {} },
-        ],
-        activities: [
-          { id: "a1", name: "Trial Activity", deeplink: "#", imageUrl: "", meta: {} },
-        ],
-        flights: [
-          { id: "f1", name: "Trial Flight", deeplink: "#", imageUrl: "", meta: {} },
-        ],
-        transports: [
-          { id: "t1", name: "Trial Transport", deeplink: "#", imageUrl: "", meta: {} },
-        ],
-      };
-
-      const ranked = {
-        hotelId: "h1",
-        activityId: "a1",
-        flightId: "f1",
-        transportId: "t1",
-        reasons: {
-          hotel: "Trial pick",
-          activity: "Trial pick",
-          flight: "Trial pick",
-          transport: "Trial pick",
-        },
-        featureAnalysis: [
-          { key: "budget_meter", text: "Trial mode" },
-          { key: "weather_awareness", text: "Trial mode" },
-          { key: "route_timing", text: "Trial mode" },
-          { key: "family_mode", text: "Trial mode" },
-        ],
-      };
-
-      const plan = await prisma.plan.create({
-        data: {
-          userId: adminUserId,
-          passId: null,
-          title: String(body?.title ?? "Trial Gene Smart Plan"),
-          destination,
-          startDate: new Date(startDate),
-          endDate: new Date(endDate),
-          summaryJson: {
-            inputs,
-            picks: {
-              hotel: providerData.hotels[0],
-              activity: providerData.activities[0],
-              flight: providerData.flights[0],
-              transport: providerData.transports[0],
-              reasons: ranked.reasons,
-            },
-            featureAnalysis: ranked.featureAnalysis,
-            adminBypass: true,
-            trial: true,
-          },
-        },
-        select: { id: true },
-      });
-
-      return NextResponse.json({
-        ok: true,
-        planId: plan.id,
-        remainingActions: 999,
-        admin: true,
-        trial: true,
-      });
+    if (!body?.idempotencyKey) {
+      return NextResponse.json({ ok: false, code: "MISSING_IDEMPOTENCY_KEY" }, { status: 400 });
+    }
+    generationRequestId = String(body.idempotencyKey || uuidFallback()).trim();
+    if (!generationRequestId) {
+      return NextResponse.json({ ok: false, code: "MISSING_IDEMPOTENCY_KEY" }, { status: 400 });
     }
 
-    // =========================
-    // Normal customer path (Supabase)
-    // =========================
     const supabase = createRouteClient();
     const { data, error } = await supabase.auth.getUser();
 
@@ -135,20 +132,30 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, code: "NOT_AUTHED" }, { status: 401 });
     }
 
-    if (!body?.idempotencyKey) {
-      return NextResponse.json({ ok: false, code: "MISSING_IDEMPOTENCY_KEY" }, { status: 400 });
-    }
-
     const userId = data.user.id;
+    await ensureUserProfile(data.user, "AI_GENERATION_STARTED");
     const admin = await isAdmin(userId);
 
+    analyticsUserId = userId;
+
     const destination = String(body.destination ?? "Unknown");
+    analyticsDestination = destination;
     const startDate = String(body.startDate ?? new Date().toISOString());
     const endDate = String(body.endDate ?? new Date().toISOString());
     const inputs = body.inputs ?? body;
 
     let passId: string | null = null;
     let remainingActions: number | null = null;
+
+    const existingPlan = await findExistingGeneration(userId, generationRequestId);
+    if (existingPlan) {
+      return NextResponse.json({
+        ok: true,
+        planId: existingPlan.id,
+        remainingActions,
+        idempotent: true,
+      });
+    }
 
     if (!admin) {
       const passCheck = await requireActivePass(userId);
@@ -158,17 +165,59 @@ export async function POST(req: Request) {
 
       passId = passCheck.pass.id;
 
-      const limitCheck = await assertRateLimits(userId, "GENERATE_RECOMMENDATIONS");
+      const limitCheck = await assertRateLimits(userId, "GENERATE_DAY_PLAN");
       if (!limitCheck.ok) {
         return NextResponse.json({ ok: false, code: limitCheck.code, message: limitCheck.message }, { status: 429 });
       }
 
-      const consumed = await consumeCredit(userId, "GENERATE_RECOMMENDATIONS", {
+      if (await hasExistingCreditCharge(userId, generationRequestId)) {
+        return NextResponse.json(
+          { ok: false, code: "GENERATION_ALREADY_PROCESSING", message: safeGenerationMessage("GENERATION_ALREADY_PROCESSING") },
+          { status: 409 },
+        );
+      }
+
+      await recordGenerationEvent({
+        req,
+        userId,
+        eventName: "ai_generation_started",
+        destination,
+        metadata: {
+          generationRequestId,
+          adminBypass: false,
+        },
+      });
+
+      const consumed = await consumeCredit(userId, "GENERATE_DAY_PLAN", {
         planId: body.planId ?? null,
-        idempotencyKey: body.idempotencyKey || uuidFallback(),
+        idempotencyKey: generationRequestId,
+        billableTimelineGeneration: true,
       });
       consumedUserId = userId;
       remainingActions = "status" in consumed ? consumed.status.mainCreditsRemaining : null;
+
+      await recordGenerationEvent({
+        req,
+        userId,
+        eventName: "credit_consumed",
+        destination,
+        metadata: {
+          generationRequestId,
+          actionType: "GENERATE_DAY_PLAN",
+          remainingActions,
+        },
+      });
+    } else {
+      await recordGenerationEvent({
+        req,
+        userId,
+        eventName: "ai_generation_started",
+        destination,
+        metadata: {
+          generationRequestId,
+          adminBypass: true,
+        },
+      });
     }
 
     const providerData = await aggregateProviderData({
@@ -178,6 +227,10 @@ export async function POST(req: Request) {
       budget: Number(body.budget ?? 0),
       currency: String(body.currency ?? "USD"),
     });
+    const counts = providerCounts(providerData);
+    if (!counts.hotels && !counts.activities && !counts.transports && !counts.flights) {
+      throw generationError("NO_PROVIDER_RESULTS", "No provider-backed travel options were returned.", 503);
+    }
 
     const prompt = {
       destination,
@@ -221,14 +274,14 @@ export async function POST(req: Request) {
 }
 
 Here is the input JSON:
-${JSON.stringify(prompt)}`
+${JSON.stringify(prompt)}`,
         },
       ],
     });
 
     if (!admin && passId) {
       const usage = (ai as any)?.usage;
-      await logAiUsage(userId, passId, "GENERATE_RECOMMENDATIONS", {
+      await logAiUsage(userId, passId, "GENERATE_DAY_PLAN", {
         inputTokens: usage?.input_tokens ?? null,
         outputTokens: usage?.output_tokens ?? null,
         totalTokens: usage?.total_tokens ?? null,
@@ -248,18 +301,32 @@ ${JSON.stringify(prompt)}`
     }>(text);
 
     if (!ranked) {
-      return NextResponse.json(
-        { ok: false, code: "AI_BAD_JSON", message: "OpenAI did not return valid JSON." },
-        { status: 500 }
-      );
+      throw generationError("AI_BAD_JSON", "OpenAI did not return valid generation JSON.", 500);
     }
 
+    const validationWarnings: string[] = [];
     const hotel = providerData.hotels.find((h) => h.id === ranked.hotelId) ?? providerData.hotels[0];
+    if (ranked.hotelId && hotel?.id !== ranked.hotelId) validationWarnings.push("hotel_id_not_found_used_provider_fallback");
     const activity =
       providerData.activities.find((a) => a.id === ranked.activityId) ?? providerData.activities[0];
+    if (ranked.activityId && activity?.id !== ranked.activityId) validationWarnings.push("activity_id_not_found_used_provider_fallback");
     const flight = providerData.flights.find((f) => f.id === ranked.flightId) ?? providerData.flights[0];
+    if (ranked.flightId && flight?.id !== ranked.flightId) validationWarnings.push("flight_id_not_found_used_provider_fallback");
     const transport =
       providerData.transports.find((t) => t.id === ranked.transportId) ?? providerData.transports[0];
+    if (ranked.transportId && transport?.id !== ranked.transportId) validationWarnings.push("transport_id_not_found_used_provider_fallback");
+
+    const summaryJson = JSON.parse(
+      JSON.stringify({
+        generationRequestId,
+        inputs,
+        picks: { hotel, activity, flight, transport, reasons: ranked.reasons },
+        featureAnalysis: ranked.featureAnalysis,
+        providerCounts: counts,
+        validationWarnings,
+        adminBypass: admin ? true : undefined,
+      }),
+    ) as Prisma.InputJsonValue;
 
     const plan = await prisma.plan.create({
       data: {
@@ -269,15 +336,36 @@ ${JSON.stringify(prompt)}`
         destination,
         startDate: new Date(startDate),
         endDate: new Date(endDate),
-
-        summaryJson: {
-          inputs,
-          picks: { hotel, activity, flight, transport, reasons: ranked.reasons },
-          featureAnalysis: ranked.featureAnalysis,
-          adminBypass: admin ? true : undefined,
-        },
+        summaryJson,
       },
       select: { id: true },
+    });
+
+    await recordUserActivity({
+      userId,
+      event: "AI_PLAN_GENERATED",
+      entityType: "PLAN",
+      entityId: plan.id,
+      metadata: {
+        destination,
+        startDate,
+        endDate,
+        adminBypass: admin,
+      },
+    });
+
+    await recordGenerationEvent({
+      req,
+      userId,
+      eventName: "ai_generation_completed",
+      destination,
+      planId: plan.id,
+      metadata: {
+        generationRequestId,
+        adminBypass: admin,
+        providerCounts: counts,
+        validationWarnings,
+      },
     });
 
     return NextResponse.json({
@@ -287,19 +375,42 @@ ${JSON.stringify(prompt)}`
     });
   } catch (e: any) {
     try {
-      const cookie = req.headers.get("cookie") ?? "";
-      const isEnvAdmin = cookie.includes("admin_auth=1");
-      if (!isEnvAdmin && consumedUserId) {
-        await refundConsumedCredit(consumedUserId, "GENERATE_RECOMMENDATIONS", {
-            reason: "AI_FAILED",
+      if (consumedUserId) {
+        await refundConsumedCredit(consumedUserId, "GENERATE_DAY_PLAN", {
+          reason: "AI_FAILED",
+          idempotencyKey: generationRequestId,
         });
       }
     } catch {
       // keep original error response stable even if refund logging fails
     }
+
+    if (analyticsUserId) {
+      await recordGenerationEvent({
+        req,
+        userId: analyticsUserId,
+        eventName: "ai_generation_failed",
+        destination: analyticsDestination,
+        metadata: {
+          generationRequestId,
+          errorName: e?.name ?? "Error",
+          errorCode: e?.code ?? e?.errorCode ?? null,
+          refunded: Boolean(consumedUserId),
+        },
+      }).catch(() => undefined);
+    }
+
+    const code = e?.code ?? e?.errorCode ?? "INTERNAL_ERROR";
+    const status = typeof e?.status === "number" ? e.status : 500;
+    console.error("AI generate-full error:", {
+      code,
+      message: e?.message,
+      generationRequestId,
+    });
+
     return NextResponse.json(
-      { ok: false, code: "INTERNAL_ERROR", message: e?.message || "Unknown error" },
-      { status: 500 }
+      { ok: false, code, message: safeGenerationMessage(code) },
+      { status },
     );
   }
 }

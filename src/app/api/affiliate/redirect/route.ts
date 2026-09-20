@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createRouteClient } from "@/lib/supabase/server";
 import type { RecommendationPayload } from "@/lib/recommendation/types";
-import { ANALYTICS_SESSION_COOKIE, getAnalyticsLocation, parseUserAgent, recordAnalyticsEvent } from "@/lib/analytics-server";
+import { ANALYTICS_ANONYMOUS_COOKIE, ANALYTICS_SESSION_COOKIE, getAnalyticsLocation, parseUserAgent, recordAnalyticsEvent } from "@/lib/analytics-server";
 import { tableExists } from "@/lib/prisma-safe";
 import { buildDefaultReadyPlanContent } from "@/lib/ready-plan-content";
+import { recordBookingClick, recordUserActivity } from "@/lib/customer-activity";
+import { isIP } from "node:net";
 
 export const dynamic = "force-dynamic";
 
@@ -12,12 +14,51 @@ function getBookingItemFromPayload(payload: RecommendationPayload | null | undef
   return payload?.summaryState?.bookingState?.items?.find((item) => item.key === itemKey) ?? null;
 }
 
+const DEFAULT_AFFILIATE_HOSTS = [
+  "viator.com",
+  "stay22.com",
+  "booking.com",
+  "aviasales.com",
+  "travelpayouts.com",
+  "trip.com",
+  "getyourguide.com",
+  "expedia.com",
+  "hotels.com",
+];
+
+function isPrivateIp(hostname: string) {
+  if (!isIP(hostname)) return false;
+  return /^(127\.|10\.|0\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(hostname) || hostname === "::1";
+}
+
+function approvedAffiliateHosts() {
+  return [...DEFAULT_AFFILIATE_HOSTS, ...(process.env.AFFILIATE_ALLOWED_HOSTS || "").split(",")]
+    .map((host) => host.trim().toLowerCase().replace(/^www\./, ""))
+    .filter(Boolean);
+}
+
 function getSafeAffiliateUrl(value: string | null | undefined) {
   if (!value) return null;
+  if (value.startsWith("//") || /[\r\n]/.test(value)) return null;
 
   try {
     const destination = new URL(value);
     if (destination.protocol !== "https:") return null;
+    if (destination.username || destination.password) return null;
+    const hostname = destination.hostname.toLowerCase().replace(/^www\./, "");
+    if (hostname === "localhost" || hostname.endsWith(".localhost") || isPrivateIp(hostname)) return null;
+    if (!approvedAffiliateHosts().some((host) => hostname === host || hostname.endsWith(`.${host}`))) return null;
+
+    // Reject attacker-controlled nested redirect destinations. Provider search
+    // parameters are allowed, but URL-shaped values must remain on approved hosts.
+    for (const [, parameter] of destination.searchParams) {
+      if (!/^https?:\/\//i.test(parameter)) continue;
+      const nested = new URL(parameter);
+      const nestedHost = nested.hostname.toLowerCase().replace(/^www\./, "");
+      if (nested.protocol !== "https:" || !approvedAffiliateHosts().some((host) => nestedHost === host || nestedHost.endsWith(`.${host}`))) {
+        return null;
+      }
+    }
     return destination.toString();
   } catch {
     return null;
@@ -37,6 +78,7 @@ export async function GET(req: NextRequest) {
     const itemKey = req.nextUrl.searchParams.get("itemKey");
     const resolveOnly = req.nextUrl.searchParams.get("resolve") === "1";
     const sessionId = req.cookies.get(ANALYTICS_SESSION_COOKIE)?.value || crypto.randomUUID();
+    const anonymousId = req.cookies.get(ANALYTICS_ANONYMOUS_COOKIE)?.value || null;
     const { country, city } = getAnalyticsLocation(req.headers);
     const { deviceType, browser, os } = parseUserAgent(req.headers.get("user-agent"));
 
@@ -101,10 +143,29 @@ export async function GET(req: NextRequest) {
           })
           ?.catch(() => null);
 
+        await recordBookingClick({
+          userId,
+          readyPlanId,
+          readyPlanItemId: itemRecord.id,
+          provider: "ready-plan",
+          itemName: itemRecord.title,
+          itemType: itemRecord.type,
+          destination: itemPlan.title,
+          metadata,
+        });
+        await recordUserActivity({
+          userId,
+          event: "BOOK_NOW_CLICKED",
+          entityType: "READY_PLAN_ITEM",
+          entityId: itemRecord.id,
+          metadata,
+        });
+
         await recordAnalyticsEvent({
           userId: userId ?? undefined,
+          anonymousId,
           sessionId,
-          eventName: "affiliate_redirect_clicked",
+          eventName: "booking_link_clicked",
           eventCategory: "commerce",
           pagePath: "/api/affiliate/redirect",
           referrer: req.headers.get("referer"),
@@ -186,10 +247,29 @@ export async function GET(req: NextRequest) {
         })
         ?.catch(() => null);
 
+      await recordBookingClick({
+        userId,
+        readyPlanId,
+        readyPlanItemId: contentItemId,
+        provider: "ready-plan",
+        itemName: item.title,
+        itemType: item.type,
+        destination: plan.destination,
+        metadata,
+      });
+      await recordUserActivity({
+        userId,
+        event: "BOOK_NOW_CLICKED",
+        entityType: "READY_PLAN_ITEM",
+        entityId: contentItemId,
+        metadata,
+      });
+
       await recordAnalyticsEvent({
         userId: userId ?? undefined,
+        anonymousId,
         sessionId,
-        eventName: "affiliate_redirect_clicked",
+        eventName: "booking_link_clicked",
         eventCategory: "commerce",
         pagePath: "/api/affiliate/redirect",
         referrer: req.headers.get("referer"),
@@ -262,10 +342,28 @@ export async function GET(req: NextRequest) {
         })
         ?.catch(() => null);
 
+      await recordBookingClick({
+        userId,
+        readyPlanId: contentType === "ready-plan" ? affiliateLinkId : null,
+        provider: contentType || "affiliate",
+        itemName: String((metadata as any).title || contentType || "Affiliate booking"),
+        itemType: contentType || "affiliate",
+        destination: String((metadata as any).slug || ""),
+        metadata,
+      });
+      await recordUserActivity({
+        userId,
+        event: "BOOK_NOW_CLICKED",
+        entityType: String(contentType || "AFFILIATE").toUpperCase(),
+        entityId: affiliateLinkId,
+        metadata,
+      });
+
       await recordAnalyticsEvent({
         userId: userId ?? undefined,
+        anonymousId,
         sessionId,
-        eventName: "affiliate_redirect_clicked",
+        eventName: "booking_link_clicked",
         eventCategory: "commerce",
         pagePath: "/api/affiliate/redirect",
         referrer: req.headers.get("referer"),
@@ -282,7 +380,7 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ ok: false, message: "Booking link is not available yet. Please try another option." }, { status: 400 });
       }
 
-      if (resolveOnly) return NextResponse.json({ ok: true, url: destinationUrl });
+      if (resolveOnly) return NextResponse.json({ ok: true });
       return NextResponse.redirect(destinationUrl, { status: 302 });
     }
 
@@ -310,8 +408,9 @@ export async function GET(req: NextRequest) {
 
       await recordAnalyticsEvent({
         userId: userId ?? undefined,
+        anonymousId,
         sessionId,
-        eventName: "affiliate_redirect_clicked",
+        eventName: "booking_link_clicked",
         eventCategory: "commerce",
         pagePath: "/api/affiliate/redirect",
         referrer: req.headers.get("referer"),
@@ -334,7 +433,7 @@ export async function GET(req: NextRequest) {
       }
 
       if (resolveOnly) {
-        return NextResponse.json({ ok: true, url: destinationUrl });
+        return NextResponse.json({ ok: true });
       }
 
       return NextResponse.redirect(destinationUrl, { status: 302 });
@@ -399,8 +498,9 @@ export async function GET(req: NextRequest) {
 
     await recordAnalyticsEvent({
         userId,
+      anonymousId,
       sessionId,
-      eventName: "affiliate_redirect_clicked",
+      eventName: "booking_link_clicked",
       eventCategory: "commerce",
       pagePath: "/api/affiliate/redirect",
       referrer: req.headers.get("referer"),
@@ -419,8 +519,39 @@ export async function GET(req: NextRequest) {
       },
     });
 
+    await recordBookingClick({
+      userId,
+      planId,
+      planItemId: String((bookingItem as any).id ?? itemKey),
+      provider: bookingItem.affiliateProvider || bookingItem.provider || "affiliate",
+      providerItemId: (bookingItem as any).providerId ?? null,
+      itemName: (bookingItem as any).title || (bookingItem as any).name || itemKey,
+      itemType: bookingItem.type,
+      destination: bookingItem.destinationId ?? null,
+      metadata: {
+        planId,
+        itemKey,
+        itemId: bookingItem.id,
+        itemType: bookingItem.type,
+        destinationId: bookingItem.destinationId ?? null,
+        provider: bookingItem.affiliateProvider || bookingItem.provider || "affiliate",
+      },
+    });
+    await recordUserActivity({
+      userId,
+      event: "BOOK_NOW_CLICKED",
+      entityType: "PLAN_ITEM",
+      entityId: String((bookingItem as any).id ?? itemKey),
+      metadata: {
+        planId,
+        itemKey,
+        itemId: bookingItem.id,
+        itemType: bookingItem.type,
+      },
+    });
+
     if (resolveOnly) {
-      return NextResponse.json({ ok: true, url: destinationUrl });
+      return NextResponse.json({ ok: true });
     }
 
     return NextResponse.redirect(destinationUrl, { status: 302 });
