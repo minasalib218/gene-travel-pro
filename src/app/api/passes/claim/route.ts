@@ -66,7 +66,7 @@ export async function POST(req: Request) {
   } catch (e: any) {
     console.error("passes/claim error:", e);
     return NextResponse.json(
-      { ok: false, code: "INTERNAL_ERROR", message: e?.message ?? "Claim error" },
+      { ok: false, code: "INTERNAL_ERROR", message: "Unable to claim this pass right now." },
       { status: 500 }
     );
   }

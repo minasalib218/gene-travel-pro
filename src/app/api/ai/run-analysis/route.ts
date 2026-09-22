@@ -4,122 +4,22 @@ import { requireActivePass } from "@/lib/require-pass";
 import { consumeTierAction } from "@/lib/tier-actions";
 import { prisma } from "@/lib/prisma";
 import { isAdmin } from "@/lib/access/canUseAi";
+import { openai } from "@/lib/openai/server";
 
 function uuidFallback() {
   return String(Date.now()) + "-" + Math.random().toString(16).slice(2);
 }
 
+function safeJson<T>(text: string): T | null {
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(req: Request) {
   try {
-    // ✅ ENV admin bypass (must be inside POST)
-    const cookie = req.headers.get("cookie") ?? "";
-    const isEnvAdmin = cookie.includes("admin_auth=1");
-
-    // ✅ Trial path for ENV admin (no Supabase needed)
-    if (isEnvAdmin) {
-      const body = await req.json().catch(() => null);
-
-      // If the client passed a planId, reuse it, otherwise create one
-      const existingPlanId = body?.planId ? String(body.planId) : null;
-
-      const destination = String(body?.destination ?? "Trial Destination");
-      const startDateStr = String(body?.startDate ?? new Date().toISOString());
-      const endDateStr = String(body?.endDate ?? new Date().toISOString());
-
-      // We need a userId for DB relations.
-      // If you don't want DB writes in trial, tell me and I’ll switch to sessionStorage only.
-      const adminUserId = process.env.ADMIN_USER_ID || "trial-admin";
-
-      // Ensure profile exists if using real schema relations (profiles table)
-      // If adminUserId is not a real Supabase UUID, this will fail with FK constraints.
-      // Best: set ADMIN_USER_ID in .env.local to a real Supabase user UUID.
-      // ADMIN_USER_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-      try {
-        await prisma.profile.upsert({
-          where: { id: adminUserId },
-          update: {},
-          create: { id: adminUserId, email: process.env.ADMIN_EMAIL ?? null },
-          select: { id: true },
-        });
-      } catch {
-        // ignore if your DB does not enforce FK, otherwise you must set ADMIN_USER_ID properly
-      }
-
-      const plan =
-        existingPlanId
-          ? await prisma.plan.findFirst({
-              where: { id: existingPlanId, userId: adminUserId },
-              select: { id: true },
-            })
-          : null;
-
-      const planId =
-        plan?.id ??
-        (
-          await prisma.plan.create({
-            data: {
-              userId: adminUserId,
-              title: String(body?.title ?? "Trial Gene Plan"),
-              destination,
-              startDate: new Date(startDateStr),
-              endDate: new Date(endDateStr),
-              inputsJson: body?.inputs ?? body ?? null,
-            },
-            select: { id: true },
-          })
-        ).id;
-
-      const analysis = {
-        generatedAt: new Date().toISOString(),
-        promptInstructions: [
-          "Generate Smart Booking Scores for every selected hotel, flight, and activity.",
-          "Score Value, Location, Walking, Comfort, Family, Transport, and Worth the Money from 0 to 100.",
-          "Use only real available item data from provider/API results and the user's inputs.",
-          "Do not invent price, rating, distance, or availability.",
-          "If data is missing, lower confidence and explain what is missing.",
-          "Generate a Travel Happiness Score for the selected itinerary.",
-          "Predict enjoyment probability, stress probability, and compatibility score from pace, budget, crowd density, walking load, weather, traveler personality, fatigue signals, comfort, and route practicality.",
-          "Use only real trip data already available in the planner, recommendation results, and day-by-day itinerary.",
-          "Do not invent fake prices, weather, or distances.",
-          "If data is missing, lower confidence and explain why. Return a concise premium summary, positive drivers, risk drivers, and an overall score.",
-          "Generate a Smart Visa & Entry Assistant analysis using the traveler's passport country, destination country, transit countries, trip dates, passport expiry date, and traveler profile.",
-          "Explain visa requirement possibility, entry restrictions, vaccination/health rules, transit visa risk, passport validity, customs notes, and required documents.",
-          "If official API data is missing, lower confidence and clearly say the traveler must verify with embassy/airline. Do not invent exact legal guarantees.",
-        ],
-        engines: {
-          budget: { ok: true, note: "Trial budget analysis" },
-          timing: { ok: true, note: "Trial timing analysis" },
-          weather: { ok: true, note: "Trial weather checks" },
-        },
-        features: [
-          "Season Genius Score",
-          "Ultra-local travel time accuracy",
-          "Fatigue Meter",
-          "Weather auto-swap",
-          "Risk Radar",
-          "Budget Dampener",
-        ],
-        inputsSnapshot: body?.inputs ?? body ?? null,
-        adminBypass: true,
-      };
-
-      await prisma.plan.update({
-        where: { id: planId },
-        data: { analysisJson: analysis },
-      });
-
-      return NextResponse.json({
-        ok: true,
-        planId,
-        remainingActions: 999,
-        admin: true,
-        trial: true,
-      });
-    }
-
-    // =========================
-    // Normal customer path (Supabase)
-    // =========================
     const supabase = createRouteClient();
     const { data, error } = await supabase.auth.getUser();
 
@@ -143,7 +43,7 @@ export async function POST(req: Request) {
 
     const plan = await prisma.plan.findFirst({
       where: { id: planId, userId },
-      select: { id: true, inputsJson: true },
+      select: { id: true, passId: true, inputsJson: true, recommendationJson: true, summaryJson: true },
     });
 
     if (!plan) {
@@ -172,36 +72,88 @@ export async function POST(req: Request) {
       remainingActions = charge.remaining;
     }
 
+    const analysisPrompt = {
+      planId,
+      destination: (plan.inputsJson as any)?.destination ?? null,
+      inputs: plan.inputsJson ?? null,
+      recommendation: plan.recommendationJson ?? null,
+      summary: plan.summaryJson ?? null,
+      instructions: [
+        "Generate real analysis only from the provided trip data.",
+        "Do not invent exact prices, weather, or legal guarantees.",
+        "If data is missing, say it clearly and lower confidence.",
+        "Return premium but concise analysis for booking fit, timing pressure, budget pressure, and visa-entry readiness.",
+      ],
+    };
+
+    const ai = await openai.responses.create({
+      model: "gpt-5",
+      reasoning: { effort: "low" },
+      input: [
+        {
+          role: "user",
+          content: `You are Gene Travel analysis AI.
+
+Return strict JSON only in this shape:
+{
+  "summary": "string",
+  "positiveDrivers": ["string"],
+  "riskDrivers": ["string"],
+  "budgetAnalysis": ["string"],
+  "timingAnalysis": ["string"],
+  "mobilityAnalysis": ["string"],
+  "visaEntrySummary": "string",
+  "warnings": ["string"],
+  "confidence": 0
+}
+
+Use only the provided data:
+${JSON.stringify(analysisPrompt)}`,
+        },
+      ],
+    });
+
+    const parsed = safeJson<{
+      summary?: string;
+      positiveDrivers?: string[];
+      riskDrivers?: string[];
+      budgetAnalysis?: string[];
+      timingAnalysis?: string[];
+      mobilityAnalysis?: string[];
+      visaEntrySummary?: string;
+      warnings?: string[];
+      confidence?: number;
+    }>(ai.output_text ?? "");
+
     const analysis = {
       generatedAt: new Date().toISOString(),
-      promptInstructions: [
-        "Generate Smart Booking Scores for every selected hotel, flight, and activity.",
-        "Score Value, Location, Walking, Comfort, Family, Transport, and Worth the Money from 0 to 100.",
-        "Use only real available item data from provider/API results and the user's inputs.",
-        "Do not invent price, rating, distance, or availability.",
-        "If data is missing, lower confidence and explain what is missing.",
-        "Generate a Travel Happiness Score for the selected itinerary.",
-        "Predict enjoyment probability, stress probability, and compatibility score from pace, budget, crowd density, walking load, weather, traveler personality, fatigue signals, comfort, and route practicality.",
-        "Use only real trip data already available in the planner, recommendation results, and day-by-day itinerary.",
-        "Do not invent fake prices, weather, or distances.",
-        "If data is missing, lower confidence and explain why. Return a concise premium summary, positive drivers, risk drivers, and an overall score.",
-        "Generate a Smart Visa & Entry Assistant analysis using the traveler's passport country, destination country, transit countries, trip dates, passport expiry date, and traveler profile.",
-        "Explain visa requirement possibility, entry restrictions, vaccination/health rules, transit visa risk, passport validity, customs notes, and required documents.",
-        "If official API data is missing, lower confidence and clearly say the traveler must verify with embassy/airline. Do not invent exact legal guarantees.",
-      ],
+      promptInstructions: analysisPrompt.instructions,
       engines: {
-        budget: { ok: true, note: "Stub budget analysis" },
-        timing: { ok: true, note: "Stub timing analysis" },
-        weather: { ok: true, note: "Stub weather checks" },
+        budget: {
+          ok: true,
+          notes: parsed?.budgetAnalysis ?? [],
+        },
+        timing: {
+          ok: true,
+          notes: parsed?.timingAnalysis ?? [],
+        },
+        mobility: {
+          ok: true,
+          notes: parsed?.mobilityAnalysis ?? [],
+        },
       },
       features: [
-        "Season Genius Score",
-        "Ultra-local travel time accuracy",
-        "Fatigue Meter",
-        "Weather auto-swap",
-        "Risk Radar",
-        "Budget Dampener",
+        "AI Booking Fit Analysis",
+        "AI Timing Pressure Review",
+        "AI Mobility Review",
+        "AI Visa & Entry Summary",
       ],
+      aiSummary: parsed?.summary || "Analysis generated from available trip data.",
+      positiveDrivers: parsed?.positiveDrivers ?? [],
+      riskDrivers: parsed?.riskDrivers ?? [],
+      visaEntrySummary: parsed?.visaEntrySummary ?? "",
+      warnings: parsed?.warnings ?? [],
+      confidence: typeof parsed?.confidence === "number" ? parsed.confidence : 62,
       inputsSnapshot: plan.inputsJson ?? null,
       adminBypass: admin ? true : undefined,
     };
@@ -218,8 +170,8 @@ export async function POST(req: Request) {
     });
   } catch (e: any) {
     return NextResponse.json(
-      { ok: false, code: "INTERNAL_ERROR", message: e?.message || "Unknown error" },
-      { status: 500 }
+      { ok: false, code: "INTERNAL_ERROR", message: "Unable to run analysis right now." },
+      { status: 500 },
     );
   }
 }

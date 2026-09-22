@@ -4,11 +4,36 @@ import { notFound } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import { prisma } from "@/lib/db/client";
 import { parseDestinationRecord } from "@/lib/content/destinations";
+import { buildSeoMetadata, jsonLdScript, SITE_URL } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
+async function getPublishedDestination(slug: string) {
+  return prisma.destination.findFirst({ where: { slug, status: "published" } }).catch(() => null);
+}
+
+export async function generateMetadata({ params }: { params: { slug: string } }) {
+  const row = await getPublishedDestination(params.slug);
+  if (!row) {
+    return buildSeoMetadata({
+      title: "Destination Not Found",
+      description: "This Gene destination is private, unpublished, or no longer available.",
+      path: `/destinations/${params.slug}`,
+      noIndex: true,
+    });
+  }
+
+  const destination = parseDestinationRecord(row as any);
+  return buildSeoMetadata({
+    title: destination.title,
+    description: destination.description,
+    path: `/destinations/${destination.slug}`,
+    image: destination.imageUrl,
+  });
+}
+
 export default async function DestinationDetailPage({ params }: { params: { slug: string } }) {
-  const row = await prisma.destination.findFirst({ where: { slug: params.slug, status: "published" } }).catch(() => null);
+  const row = await getPublishedDestination(params.slug);
   if (!row) return notFound();
   const destination = parseDestinationRecord(row as any);
   const bookingHref = destination.affiliateLink
@@ -17,6 +42,28 @@ export default async function DestinationDetailPage({ params }: { params: { slug
 
   return (
     <main className="min-h-screen bg-[#060606] text-white">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={jsonLdScript({
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            { "@type": "ListItem", position: 1, name: "Destinations", item: `${SITE_URL}/destinations` },
+            { "@type": "ListItem", position: 2, name: destination.title, item: `${SITE_URL}/destinations/${destination.slug}` },
+          ],
+        })}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={jsonLdScript({
+          "@context": "https://schema.org",
+          "@type": "TouristDestination",
+          name: destination.title,
+          description: destination.description,
+          image: destination.imageUrl,
+          url: `${SITE_URL}/destinations/${destination.slug}`,
+        })}
+      />
       <Navbar />
       <section className="relative min-h-[88svh] overflow-hidden">
         <div className="absolute inset-0">

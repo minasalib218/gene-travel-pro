@@ -65,6 +65,12 @@ h1,h2,h3,h4,h5,h6,.font-serif,[data-title-font="true"]{font-family:var(--font-ti
     max-width: 100%;
   }
 
+  [role="dialog"],
+  [aria-modal="true"] {
+    max-width: calc(100vw - 24px);
+    max-height: calc(100dvh - 24px);
+  }
+
   .overflow-x-auto,
   .scrollbar-hide {
     overscroll-behavior-inline: contain;
@@ -113,8 +119,14 @@ h1,h2,h3,h4,h5,h6,.font-serif,[data-title-font="true"]{font-family:var(--font-ti
 }
 
 @media (max-width: 768px) {
+  html,
+  body {
+    min-width: 0;
+  }
+
   body {
     font-size: 14px;
+    padding-bottom: env(safe-area-inset-bottom);
   }
 
   svg:not([data-preserve-size="true"]) {
@@ -147,6 +159,7 @@ h1,h2,h3,h4,h5,h6,.font-serif,[data-title-font="true"]{font-family:var(--font-ti
   li {
     font-size: clamp(0.78rem, 3.7vw, 0.95rem);
     line-height: 1.45;
+    overflow-wrap: anywhere;
   }
 
   small,
@@ -191,12 +204,64 @@ h1,h2,h3,h4,h5,h6,.font-serif,[data-title-font="true"]{font-family:var(--font-ti
     max-width: calc(100vw - 24px);
   }
 
+  [class*="max-w-7xl"],
+  [class*="max-w-6xl"],
+  [class*="max-w-5xl"],
+  [class*="max-w-4xl"] {
+    max-width: calc(100vw - 16px);
+  }
+
+  [class*="rounded-[36px]"] {
+    border-radius: 24px !important;
+  }
+
+  [class*="tracking-[0.28em]"],
+  [class*="tracking-[0.24em]"],
+  [class*="tracking-[0.22em]"] {
+    letter-spacing: 0.14em !important;
+  }
+
+  a,
+  button,
+  [role="button"] {
+    touch-action: manipulation;
+  }
+
+  a:not([class*="h-"]):not([class*="py-"]),
+  button:not([class*="h-"]):not([class*="py-"]) {
+    min-height: 44px;
+  }
+
+  input,
+  select,
+  textarea {
+    min-height: 44px;
+  }
+
   [class*="overflow-x-auto"],
   .scrollbar-hide {
     overflow-x: auto;
     overflow-y: hidden;
     padding-bottom: 0.35rem;
     touch-action: pan-x;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  [class*="overflow-x-auto"] > *,
+  .scrollbar-hide > * {
+    scroll-snap-align: start;
+  }
+
+  [class*="fixed"][class*="bottom-"],
+  [class*="sticky"][class*="bottom-"] {
+    padding-bottom: max(0px, env(safe-area-inset-bottom));
+  }
+
+  [class*="max-h-[58vh]"],
+  [class*="max-h-[70vh]"],
+  [class*="max-h-[80vh]"] {
+    max-height: calc(100dvh - 140px) !important;
   }
 
   table {

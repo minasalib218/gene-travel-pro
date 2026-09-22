@@ -34,8 +34,27 @@ type NormalizedWebhookEvent = {
   planType: PublicPlanType;
   userId: string | null;
   sourcePath: string | null;
+  variantId: string | null;
+  testMode: boolean | null;
   payload: Record<string, unknown>;
 };
+
+class ReconciliationRequiredError extends Error {}
+
+const EXPECTED_PACKAGE_PRICE: Record<PublicPlanType, number> = {
+  starter: 25,
+  pro: 40,
+  agency: 50,
+};
+
+function configuredVariant(planType: PublicPlanType) {
+  const variants: Record<PublicPlanType, string | undefined> = {
+    starter: process.env.LEMONSQUEEZY_STARTER_VARIANT_ID,
+    pro: process.env.LEMONSQUEEZY_PRO_VARIANT_ID,
+    agency: process.env.LEMONSQUEEZY_AGENCY_VARIANT_ID,
+  };
+  return variants[planType]?.trim() || null;
+}
 
 type CreateOrUpdatePaymentInput = {
   paymentId?: string | null;
@@ -142,6 +161,7 @@ function normalizeLemonEvent(payload: Record<string, unknown>): NormalizedWebhoo
   const customData = (meta.custom_data ?? {}) as Record<string, unknown>;
   const data = (payload.data ?? {}) as Record<string, unknown>;
   const attrs = (data.attributes ?? {}) as Record<string, unknown>;
+  const firstOrderItem = (attrs.first_order_item ?? {}) as Record<string, unknown>;
   const eventType = String(meta.event_name ?? "");
   const rawIdentifier =
     (typeof attrs.order_id === "string" ? attrs.order_id : null) ??
@@ -201,8 +221,32 @@ function normalizeLemonEvent(payload: Record<string, unknown>): NormalizedWebhoo
     sourcePath:
       (typeof customData.sourcePath === "string" ? customData.sourcePath : null) ??
       (typeof customData.source_path === "string" ? customData.source_path : null),
+    variantId: String(attrs.variant_id ?? firstOrderItem.variant_id ?? "").trim() || null,
+    testMode: typeof attrs.test_mode === "boolean" ? attrs.test_mode : null,
     payload,
   };
+}
+
+function validateCommercialEvent(event: NormalizedWebhookEvent) {
+  if (!["success", "refund", "subscription_created", "subscription_updated"].includes(event.kind)) return;
+
+  const expectedVariant = configuredVariant(event.planType);
+  if (!expectedVariant || !event.variantId || event.variantId !== expectedVariant) {
+    throw new ReconciliationRequiredError("Webhook variant does not match the configured package.");
+  }
+  if (event.currency?.toUpperCase() !== "USD") {
+    throw new ReconciliationRequiredError("Webhook currency does not match the configured package.");
+  }
+  if (event.kind === "success" && (event.amount === null || Math.abs(event.amount - EXPECTED_PACKAGE_PRICE[event.planType]) > 0.01)) {
+    throw new ReconciliationRequiredError("Webhook amount does not match the configured package.");
+  }
+  const expectTestMode = process.env.LEMONSQUEEZY_TEST_MODE === "1";
+  if (event.testMode !== null && event.testMode !== expectTestMode) {
+    throw new ReconciliationRequiredError("Webhook environment does not match this deployment.");
+  }
+  if (!event.userId || !event.customerEmail) {
+    throw new ReconciliationRequiredError("Webhook is missing its authenticated customer mapping.");
+  }
 }
 
 async function findUserIdByEmail(email: string | null) {
@@ -475,6 +519,7 @@ export async function saveWebhookEvent(args: {
       eventType: args.eventType,
       payload: args.payload as never,
       processed: false,
+      status: "RECEIVED",
     },
   });
 }
@@ -491,7 +536,7 @@ async function claimWebhookEvent(eventId: string) {
         { processedAt: { lt: staleBefore } },
       ],
     },
-    data: { errorMessage: "PROCESSING", processedAt: new Date() },
+    data: { errorMessage: "PROCESSING", lastError: null, status: "PROCESSING", processedAt: new Date(), attemptCount: { increment: 1 } },
   });
   return claimed.count === 1;
 }
@@ -503,6 +548,8 @@ export async function markWebhookProcessed(eventId: string) {
       processed: true,
       errorMessage: null,
       processedAt: new Date(),
+      status: "COMPLETED",
+      lastError: null,
     },
   });
 }
@@ -513,6 +560,8 @@ export async function markWebhookFailed(eventId: string, errorMessage: string) {
     data: {
       processed: false,
       errorMessage: errorMessage.slice(0, 1000),
+      lastError: errorMessage.slice(0, 1000),
+      status: "FAILED_RETRYABLE",
       processedAt: null,
     },
   });
@@ -1113,6 +1162,8 @@ export async function handlePaymentWebhookRequest(req: Request) {
       return NextResponse.json({ ok: true, duplicate: true, processing: true }, { status: 202 });
     }
 
+    validateCommercialEvent(event);
+
     await processWebhookEvent(event);
     await markWebhookProcessed(event.eventId);
 
@@ -1121,10 +1172,15 @@ export async function handlePaymentWebhookRequest(req: Request) {
     console.error("payment webhook processing error:", error);
     if (eventIdForFailure) {
       try {
-        await markWebhookFailed(
-          eventIdForFailure,
-          error instanceof Error ? error.message : "Webhook processing failed.",
-        );
+        const message = error instanceof Error ? error.message : "Webhook processing failed.";
+        if (error instanceof ReconciliationRequiredError) {
+          await prisma.webhookEvent.update({
+            where: { eventId: eventIdForFailure },
+            data: { processed: false, status: "REQUIRES_RECONCILIATION", errorMessage: message.slice(0, 1000), lastError: message.slice(0, 1000), processedAt: null },
+          });
+        } else {
+          await markWebhookFailed(eventIdForFailure, message);
+        }
       } catch (markError) {
         console.error("webhook failure logging error:", markError);
       }

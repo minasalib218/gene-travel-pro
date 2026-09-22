@@ -1,0 +1,27 @@
+{
+  "capturedAt": "2026-09-22",
+  "project": "production:igq...jtez",
+  "counts": {
+    "readyPlans": 21,
+    "readyPlanDays": 183,
+    "readyPlanItems": 1120,
+    "readyPlanLinks": 0,
+    "destinations": 39,
+    "events": 8,
+    "deals": 0,
+    "profiles": 2,
+    "authUsers": 2,
+    "legacyPlans": 5
+  },
+  "hashes": {
+    "readyPlanIdentity": "67748a3885dc88f48ee2db28d6834a42",
+    "readyPlanImages": "0831b6f5c69425a23fbba9cf0c0fa189",
+    "readyPlanDayImages": "7134609a3ab602558789435a305066ba",
+    "readyPlanItemImages": "4073f297a87e2c05d30beac35bfd80c8",
+    "readyPlanItemAffiliateUrls": "131370cb162104a46b0fcb7172f5aa89",
+    "readyPlanLinkDestinations": "d41d8cd98f00b204e9800998ecf8427e",
+    "destinationContent": "478e2dc3bae2b9dbbedd1f5603541692",
+    "eventContent": "3068d316ed1e1a2db680cde8b4edefd9"
+  },
+  "privacy": "Hashes only; no raw affiliate URLs, image URLs, credentials, or customer data are stored here."
+}

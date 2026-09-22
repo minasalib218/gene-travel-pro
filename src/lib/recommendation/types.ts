@@ -1,3 +1,5 @@
+import type { BookingReference } from "@/lib/travel-engine/types";
+
 export type RecommendationCategory =
   | "hotel"
   | "flight"
@@ -165,6 +167,8 @@ export type RecommendationBase = {
   name: string;
   imageUrl: string;
   provider: string;
+  internalId?: string;
+  supplierItemId?: string | null;
   sourceBadge: string;
   aiReason: string;
   badge?: string;
@@ -181,6 +185,12 @@ export type RecommendationBase = {
   aiTip?: string;
   whyItFits?: string;
   affiliateUrl?: string | null;
+  sourceUrl?: string | null;
+  affiliateEligible?: boolean;
+  availabilityState?: "ready" | "unavailable" | "stale" | "revalidate";
+  lastValidatedAt?: string | null;
+  bookingReference?: BookingReference;
+  normalizedItem?: Record<string, unknown>;
   basePrice?: number;
   taxes?: number;
   fees?: number;
@@ -465,6 +475,9 @@ export type RecommendationSummaryState = {
       finalPrice: number;
       status: "pending" | "clicked" | "cancelled";
       affiliateRedirectUrl?: string | null;
+      availabilityState?: "ready" | "unavailable" | "stale" | "revalidate";
+      bookingReference?: BookingReference;
+      lastValidatedAt?: string | null;
       image?: string | null;
       subtitle?: string | null;
     }>;

@@ -48,9 +48,9 @@ export default function ActivatePage() {
         setStatus("success");
         setMessage("Pass activated ✅ Redirecting to AI Planner…");
 
-        // Redirect to AI planner input page (next page in traffic)
+        // Always go through the gated planner entry.
         setTimeout(() => {
-          window.location.href = "/ai-planner";
+          window.location.href = "/start-planning";
         }, 900);
       } catch (e: any) {
         setStatus("error");

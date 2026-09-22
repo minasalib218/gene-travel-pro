@@ -4,6 +4,8 @@ import RecommendationRecovery from "@/app/ai/recommendation/recovery";
 import ProtectedAI from "@/components/ProtectedAI";
 import { buildHiddenGemRecommendationPayload } from "@/lib/hidden-gems/hiddenGemsEngine";
 import type { UserTripInput } from "@/lib/recommendation/types";
+import { createRouteClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
 
 type Props = {
   searchParams: {
@@ -98,6 +100,12 @@ function toTripInput(planInput: any): UserTripInput {
 }
 
 export default async function RecommendationPage({ searchParams }: Props) {
+  const supabase = createRouteClient();
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user) {
+    redirect(`/signin?next=${encodeURIComponent(`/ai/recommendation?planId=${searchParams.planId || ""}`)}`);
+  }
+
   const planId = searchParams.planId;
   if (!planId) {
     return (
@@ -109,9 +117,9 @@ export default async function RecommendationPage({ searchParams }: Props) {
 
   try {
     const [planInput, recommendation] = await Promise.all([
-      prisma.planInput.findUnique({ where: { id: planId } }),
+      prisma.planInput.findFirst({ where: { id: planId, userId: data.user.id } }),
       prisma.planRecommendation.findFirst({
-        where: { planInputId: planId },
+        where: { planInputId: planId, planInput: { userId: data.user.id } },
         orderBy: { createdAt: "desc" },
       }),
     ]);

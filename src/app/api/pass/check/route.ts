@@ -3,12 +3,12 @@ import { createRouteClient } from "@/lib/supabase/server";
 import { canUseAction, CreditError, getCreditStatus } from "@/lib/credits/creditService";
 import { assertRateLimits } from "@/lib/credits/rateLimitService";
 import { getPlanRules } from "@/lib/credits/planRules";
-import { isEnvAdminCookie } from "@/lib/admin/isEnvAdmin";
+import { isVerifiedAdmin } from "@/lib/admin/verified";
 
 export async function POST(req: Request) {
   let userId: string | null = null;
   try {
-    if (isEnvAdminCookie()) {
+    if (await isVerifiedAdmin()) {
       const body = await req.json().catch(() => ({}));
       const actionType = String(body?.actionType ?? "").trim();
       const rules = getPlanRules("agency");

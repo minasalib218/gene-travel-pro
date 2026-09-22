@@ -4,27 +4,67 @@ import { notFound } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import { prisma } from "@/lib/db/client";
 import { parseEventLiveRecord } from "@/lib/content/events-live";
+import { buildSeoMetadata, jsonLdScript, SITE_URL } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
-export default async function EventDetailPage({ params }: { params: { slug: string } }) {
+function currentUtcDay() {
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
-  const row = await prisma.event
+  return today;
+}
+
+async function getPublishedEvent(slug: string) {
+  return prisma.event
     .findFirst({
       where: {
-        slug: params.slug,
+        slug,
         status: "published",
-        OR: [{ endDate: null }, { endDate: { gte: today } }],
+        OR: [{ endDate: null }, { endDate: { gte: currentUtcDay() } }],
       },
     })
     .catch(() => null);
+}
+
+export async function generateMetadata({ params }: { params: { slug: string } }) {
+  const row = await getPublishedEvent(params.slug);
+  if (!row) {
+    return buildSeoMetadata({
+      title: "Event Not Found",
+      description: "This Gene event is private, unpublished, expired, or no longer available.",
+      path: `/events/${params.slug}`,
+      noIndex: true,
+    });
+  }
+
+  const event = parseEventLiveRecord(row as any);
+  return buildSeoMetadata({
+    title: event.title,
+    description: event.description,
+    path: `/events/${event.slug}`,
+    image: event.imageUrl,
+  });
+}
+
+export default async function EventDetailPage({ params }: { params: { slug: string } }) {
+  const row = await getPublishedEvent(params.slug);
   if (!row) return notFound();
   const event = parseEventLiveRecord(row as any);
   const bookingHref = event.affiliateLink ? `/api/affiliate/redirect?type=event&id=${encodeURIComponent(event.id)}` : null;
 
   return (
     <main className="min-h-screen bg-[#050505] text-white">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={jsonLdScript({
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            { "@type": "ListItem", position: 1, name: "Events", item: `${SITE_URL}/events` },
+            { "@type": "ListItem", position: 2, name: event.title, item: `${SITE_URL}/events/${event.slug}` },
+          ],
+        })}
+      />
       <Navbar />
       <section className="relative min-h-[88svh] overflow-hidden">
         <div className="absolute inset-0">

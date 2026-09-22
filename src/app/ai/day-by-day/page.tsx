@@ -3,7 +3,7 @@ import DayByDayWorkspace from "@/app/ai/day-by-day/ui";
 
 export default function DayByDayPage() {
   return (
-    <ProtectedAI>
+    <ProtectedAI requiredFeature="Dynamic itinerary editing">
       <DayByDayWorkspace />
     </ProtectedAI>
   );

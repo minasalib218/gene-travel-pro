@@ -1,9 +1,8 @@
 import CreditBadge from "@/components/CreditBadge";
 import Navbar from "@/components/Navbar";
 import ProtectedAI from "@/components/ProtectedAI";
-import { isAdmin } from "@/lib/access/canUseAi";
 import { createRouteClient } from "@/lib/supabase/server";
-import { cookies } from "next/headers";
+import { getVerifiedAdmin } from "@/lib/admin/verified";
 import { redirect } from "next/navigation";
 
 const compareRows = [
@@ -12,6 +11,8 @@ const compareRows = [
   ["Best for", "Solo or agile couples", "Most mixed traveler profiles", "Luxury or celebration trips"],
   ["Tradeoff", "Less cushion for upgrades", "Not the absolute cheapest", "Price rises faster with add-ons"],
 ];
+
+const comparePlans = ["Lite", "Balanced", "Signature"] as const;
 
 function ComparisonContent() {
   return (
@@ -45,7 +46,28 @@ function ComparisonContent() {
               </div>
             </div>
 
-            <div className="overflow-hidden rounded-[30px] border border-white/10 bg-black/25">
+            <div className="grid gap-4 md:hidden">
+              {comparePlans.map((plan, planIndex) => (
+                <article key={plan} className="rounded-[24px] border border-white/10 bg-black/25 p-4">
+                  <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-3">
+                    <div className="text-lg font-semibold text-white">{plan}</div>
+                    <div className="rounded-full border border-[#ff7a00]/35 bg-[#ff7a00]/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#ffb16b]">
+                      Option {planIndex + 1}
+                    </div>
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    {compareRows.map((row) => (
+                      <div key={`${plan}-${row[0]}`} className="rounded-2xl border border-white/8 bg-white/[0.035] p-3">
+                        <div className="text-xs uppercase tracking-[0.16em] text-white/42">{row[0]}</div>
+                        <div className="mt-1 text-sm leading-6 text-white/78">{row[planIndex + 1]}</div>
+                      </div>
+                    ))}
+                  </div>
+                </article>
+              ))}
+            </div>
+
+            <div className="hidden overflow-hidden rounded-[30px] border border-white/10 bg-black/25 md:block">
               <div className="grid grid-cols-4 border-b border-white/10 bg-white/[0.04] text-sm">
                 {["Dimension", "Lite", "Balanced", "Signature"].map((cell, index) => (
                   <div
@@ -78,17 +100,17 @@ function ComparisonContent() {
 }
 
 export default async function ComparisonPage() {
+  const admin = await getVerifiedAdmin();
+  if (admin.ok) return <ComparisonContent />;
+
   const supabase = createRouteClient();
   const { data } = await supabase.auth.getUser();
   const user = data?.user;
-  const envAdmin = cookies().get("admin_auth")?.value === "1";
 
-  if (!user && !envAdmin) redirect("/signin");
-  if (envAdmin) return <ComparisonContent />;
-  if (user && (await isAdmin(user.id))) return <ComparisonContent />;
+  if (!user) redirect("/signin");
 
   return (
-    <ProtectedAI>
+    <ProtectedAI requiredFeature="What If Simulation Mode">
       <ComparisonContent />
     </ProtectedAI>
   );

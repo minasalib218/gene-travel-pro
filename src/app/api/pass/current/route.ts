@@ -2,11 +2,15 @@ import { NextResponse } from "next/server";
 import { createRouteClient } from "@/lib/supabase/server";
 import { getCreditStatus } from "@/lib/credits/creditService";
 import { getPlanRules } from "@/lib/credits/planRules";
-import { isEnvAdminCookie } from "@/lib/admin/isEnvAdmin";
+import { requireAdmin } from "@/lib/admin/requireAdmin";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET() {
   try {
-    if (isEnvAdminCookie()) {
+    const admin = await requireAdmin();
+    if (admin.ok) {
       const rules = getPlanRules("agency");
       return NextResponse.json({
         ok: true,
@@ -48,8 +52,9 @@ export async function GET() {
       },
     });
   } catch (error) {
+    console.error("current pass route error:", error);
     return NextResponse.json(
-      { ok: false, code: "PASS_UNAVAILABLE", message: error instanceof Error ? error.message : "Unable to load pass." },
+      { ok: false, code: "PASS_UNAVAILABLE", message: "Unable to load pass right now." },
       { status: 200 },
     );
   }

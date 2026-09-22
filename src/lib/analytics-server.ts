@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { isDatabaseUnavailableError, isSchemaDriftError } from "@/lib/prisma-safe";
+import { normalizeAnalyticsEventName, sanitizeAnalyticsMetadata } from "@/lib/analytics-events";
 
 export const ANALYTICS_SESSION_COOKIE = "gene_analytics_sid";
 export const ANALYTICS_ANONYMOUS_COOKIE = "gene_analytics_aid";
@@ -48,20 +49,22 @@ type PurchaseTrackingInput = {
 
 const FUNNEL_STEP_MAP: Record<string, { stepName: string; stepOrder: number }> = {
   page_view: { stepName: "Homepage visit", stepOrder: 1 },
-  ready_plan_clicked: { stepName: "Ready plan click", stepOrder: 2 },
-  destination_clicked: { stepName: "Destination click", stepOrder: 2 },
-  offer_clicked: { stepName: "Offer click", stepOrder: 2 },
+  page_viewed: { stepName: "Page viewed", stepOrder: 1 },
+  ready_plan_viewed: { stepName: "Ready plan viewed", stepOrder: 2 },
+  destination_viewed: { stepName: "Destination viewed", stepOrder: 2 },
+  offer_viewed: { stepName: "Offer viewed", stepOrder: 2 },
   pricing_view: { stepName: "Pricing page visit", stepOrder: 3 },
   package_selected: { stepName: "Package selected", stepOrder: 4 },
   checkout_started: { stepName: "Checkout started", stepOrder: 5 },
   payment_success: { stepName: "Payment success", stepOrder: 6 },
-  signup_completed: { stepName: "Signup complete", stepOrder: 7 },
-  login_completed: { stepName: "Login complete", stepOrder: 7 },
+  account_created: { stepName: "Account created", stepOrder: 7 },
+  user_signed_in: { stepName: "Signed in", stepOrder: 7 },
   ai_planner_started: { stepName: "AI planner started", stepOrder: 8 },
-  ai_input_completed: { stepName: "AI input completed", stepOrder: 9 },
+  ai_planner_step_completed: { stepName: "AI planner step completed", stepOrder: 9 },
+  ai_generation_completed: { stepName: "AI generation completed", stepOrder: 10 },
   recommendation_viewed: { stepName: "Recommendation viewed", stepOrder: 10 },
   analysis_completed: { stepName: "Analysis completed", stepOrder: 11 },
-  booking_button_clicked: { stepName: "Booking clicked", stepOrder: 12 },
+  booking_link_clicked: { stepName: "Booking link clicked", stepOrder: 12 },
   summary_viewed: { stepName: "Summary viewed", stepOrder: 13 },
 };
 
@@ -117,7 +120,7 @@ export function getAnalyticsLocation(headers: Headers) {
 }
 
 function cleanMetadata(metadata: Record<string, unknown> | null | undefined) {
-  const source = metadata ?? {};
+  const source = sanitizeAnalyticsMetadata(metadata);
   const payload = JSON.stringify(source);
   if (payload.length <= 8000) return source;
 
@@ -128,7 +131,11 @@ function cleanMetadata(metadata: Record<string, unknown> | null | undefined) {
 }
 
 export async function recordAnalyticsEvent(input: AnalyticsInsertInput) {
-  const safeMetadata = cleanMetadata(input.metadata);
+  const eventName = normalizeAnalyticsEventName(input.eventName);
+  const safeMetadata = cleanMetadata({
+    ...(input.metadata ?? {}),
+    ...(eventName !== input.eventName ? { legacyEventName: input.eventName } : {}),
+  });
   const payload = JSON.stringify(safeMetadata);
   try {
     await prisma.$executeRaw(
@@ -144,7 +151,7 @@ export async function recordAnalyticsEvent(input: AnalyticsInsertInput) {
           ${input.userId ?? null},
           ${input.anonymousId ?? null},
           ${input.sessionId},
-          ${input.eventName},
+          ${eventName},
           ${input.eventCategory ?? null},
           ${input.pagePath ?? null},
           ${input.referrer ?? null},
@@ -176,7 +183,7 @@ export async function recordAnalyticsEvent(input: AnalyticsInsertInput) {
     }
   }
 
-  const funnel = FUNNEL_STEP_MAP[input.eventName];
+  const funnel = FUNNEL_STEP_MAP[eventName];
   if (funnel) {
     await recordFunnelEvent({
       userId: input.userId ?? null,
@@ -484,12 +491,12 @@ export async function getAdminAnalyticsSnapshot(args: {
         (SELECT COUNT(*)::int FROM filtered_events WHERE "eventName" = 'page_view') AS "pageViews",
         (SELECT COUNT(*)::int FROM filtered_purchases) AS "purchases",
         (SELECT COALESCE(SUM(amount), 0)::float FROM filtered_purchases WHERE status IN ('completed', 'paid', 'PAID')) AS revenue,
-        (SELECT COUNT(*)::int FROM filtered_events WHERE "eventName" = 'checkout_started') AS "checkouts",
+        (SELECT COUNT(*)::int FROM filtered_events WHERE "eventName" IN ('checkout_started', 'credit_purchase_started')) AS "checkouts",
         (SELECT COUNT(*)::int FROM filtered_events WHERE "eventName" = 'ai_planner_started') AS "plannerStarts",
-        (SELECT COUNT(*)::int FROM filtered_events WHERE "eventName" = 'ai_input_completed') AS "plannerCompletions",
-        (SELECT COUNT(*)::int FROM filtered_events WHERE "eventName" = 'booking_button_clicked') AS "bookingClicks",
-        (SELECT COUNT(*)::int FROM filtered_events WHERE "eventName" = 'affiliate_redirect_clicked') AS "affiliateClicks",
-        (SELECT COUNT(*)::int FROM filtered_events WHERE "eventName" = 'payment_failed') AS "paymentFailures"
+        (SELECT COUNT(*)::int FROM filtered_events WHERE "eventName" IN ('ai_input_completed', 'ai_planner_step_completed', 'ai_generation_completed')) AS "plannerCompletions",
+        (SELECT COUNT(*)::int FROM filtered_events WHERE "eventName" IN ('booking_button_clicked', 'book_now_clicked', 'affiliate_redirect_clicked', 'booking_link_clicked')) AS "bookingClicks",
+        (SELECT COUNT(*)::int FROM filtered_events WHERE "eventName" IN ('affiliate_redirect_clicked', 'booking_link_clicked')) AS "affiliateClicks",
+        (SELECT COUNT(*)::int FROM filtered_events WHERE "eventName" IN ('payment_failed', 'credit_purchase_failed')) AS "paymentFailures"
     `,
   ).catch((error) => {
     if (isMissingTableError(error)) return [];
@@ -574,7 +581,7 @@ export async function getAdminAnalyticsSnapshot(args: {
         Prisma.sql`
           SELECT COALESCE(metadata->>'contentName', metadata->>'title', 'Ready Plan') AS label, COUNT(*)::int AS value
           FROM analytics_events
-          WHERE "createdAt" >= ${args.dateFrom} AND "createdAt" < ${args.dateTo} AND "eventName" = 'ready_plan_clicked'
+          WHERE "createdAt" >= ${args.dateFrom} AND "createdAt" < ${args.dateTo} AND "eventName" IN ('ready_plan_clicked', 'ready_plan_viewed')
           GROUP BY 1
           ORDER BY value DESC
           LIMIT 10
@@ -584,7 +591,7 @@ export async function getAdminAnalyticsSnapshot(args: {
         Prisma.sql`
           SELECT COALESCE(metadata->>'contentName', metadata->>'title', 'Destination') AS label, COUNT(*)::int AS value
           FROM analytics_events
-          WHERE "createdAt" >= ${args.dateFrom} AND "createdAt" < ${args.dateTo} AND "eventName" = 'destination_clicked'
+          WHERE "createdAt" >= ${args.dateFrom} AND "createdAt" < ${args.dateTo} AND "eventName" IN ('destination_clicked', 'destination_opened', 'destination_viewed')
           GROUP BY 1
           ORDER BY value DESC
           LIMIT 10
@@ -594,7 +601,7 @@ export async function getAdminAnalyticsSnapshot(args: {
         Prisma.sql`
           SELECT COALESCE(metadata->>'contentName', metadata->>'title', 'Offer') AS label, COUNT(*)::int AS value
           FROM analytics_events
-          WHERE "createdAt" >= ${args.dateFrom} AND "createdAt" < ${args.dateTo} AND "eventName" = 'offer_clicked'
+          WHERE "createdAt" >= ${args.dateFrom} AND "createdAt" < ${args.dateTo} AND "eventName" IN ('offer_clicked', 'offer_viewed')
           GROUP BY 1
           ORDER BY value DESC
           LIMIT 10
@@ -604,7 +611,7 @@ export async function getAdminAnalyticsSnapshot(args: {
         Prisma.sql`
           SELECT COALESCE(metadata->>'contentName', metadata->>'title', 'Event') AS label, COUNT(*)::int AS value
           FROM analytics_events
-          WHERE "createdAt" >= ${args.dateFrom} AND "createdAt" < ${args.dateTo} AND "eventName" = 'event_clicked'
+          WHERE "createdAt" >= ${args.dateFrom} AND "createdAt" < ${args.dateTo} AND "eventName" IN ('event_clicked', 'event_viewed')
           GROUP BY 1
           ORDER BY value DESC
           LIMIT 10
@@ -614,7 +621,7 @@ export async function getAdminAnalyticsSnapshot(args: {
         Prisma.sql`
           SELECT COALESCE(metadata->>'affiliateLinkId', metadata->>'provider', 'Affiliate') AS label, COUNT(*)::int AS value
           FROM analytics_events
-          WHERE "createdAt" >= ${args.dateFrom} AND "createdAt" < ${args.dateTo} AND "eventName" = 'affiliate_redirect_clicked'
+          WHERE "createdAt" >= ${args.dateFrom} AND "createdAt" < ${args.dateTo} AND "eventName" IN ('affiliate_redirect_clicked', 'booking_link_clicked')
           GROUP BY 1
           ORDER BY value DESC
           LIMIT 10

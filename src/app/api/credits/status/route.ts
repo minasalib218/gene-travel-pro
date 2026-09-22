@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { createRouteClient } from "@/lib/supabase/server";
 import { getCreditStatus } from "@/lib/credits/creditService";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function GET() {
   try {
     const supabase = createRouteClient();
@@ -14,7 +17,7 @@ export async function GET() {
     const status = await getCreditStatus(data.user.id);
     return NextResponse.json(status, { status: 200 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to load credit status.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    console.error("credit status route error:", error);
+    return NextResponse.json({ error: "Unable to load credit status." }, { status: 400 });
   }
 }

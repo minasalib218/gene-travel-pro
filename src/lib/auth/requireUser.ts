@@ -1,11 +1,13 @@
 import { prisma } from "@/lib/prisma";
 import { createRouteClient } from "@/lib/supabase/server";
+import { ensureUserProfile } from "@/lib/profile/ensureUserProfile";
 
 export async function requireUser() {
   const supabase = createRouteClient();
   const { data } = await supabase.auth.getUser();
   const user = data?.user;
   if (!user) return { ok: false as const, code: "NOT_AUTHED" };
+  await ensureUserProfile(user);
   return { ok: true as const, user };
 }
 

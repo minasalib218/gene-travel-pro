@@ -1,5 +1,3 @@
-import { buildDeepLink } from "@/lib/providers/buildDeepLink";
-import { buildBookingHotelLink } from "@/lib/affiliates/bookinglinks";
 import type {
   ActivityRecommendation,
   CarRecommendation,
@@ -46,19 +44,14 @@ function inferProvider(item: RecommendationBase) {
   return null;
 }
 
+function resolveSourceUrl(item: RecommendationBase) {
+  return normalizeSafeUrl(item.sourceUrl || item.deepLink || item.affiliateUrl || item.bookingReference?.sourceUrl || null);
+}
+
 function getHotelMeta(item: HotelRecommendation, payload: RecommendationPayload): LiveBookingMeta {
-  const fallbackUrl = normalizeSafeUrl(item.deepLink);
-  const bookingUrl =
-    fallbackUrl ||
-    buildBookingHotelLink({
-      providerId: item.id,
-      destination: payload.inputs.destination,
-      checkIn: payload.inputs.startDate,
-      checkOut: payload.inputs.endDate,
-      adults: payload.inputs.travelersCount,
-    });
+  const bookingUrl = resolveSourceUrl(item);
   return {
-    status: bookingUrl ? "live" : "unavailable",
+    status: item.bookingReference?.affiliateEligible && bookingUrl ? "live" : "unavailable",
     provider: item.provider,
     label: priceLabel(item.nightlyPrice, payload.inputs.currency),
     bookingUrl,
@@ -72,12 +65,9 @@ function getDeepLinkMeta(
   payload: RecommendationPayload,
   price: number,
 ): LiveBookingMeta {
-  const safeUrl = normalizeSafeUrl(item.deepLink);
-  const provider = inferProvider(item);
-  const bookingUrl =
-    safeUrl && provider ? buildDeepLink({ provider, rawUrl: safeUrl }) : safeUrl;
+  const bookingUrl = resolveSourceUrl(item);
   return {
-    status: bookingUrl ? "live" : "fallback",
+    status: item.bookingReference?.affiliateEligible && bookingUrl ? "live" : bookingUrl ? "fallback" : "unavailable",
     provider: item.provider,
     label: priceLabel(price, payload.inputs.currency),
     bookingUrl,
@@ -94,10 +84,10 @@ export function enrichRecommendationPayloadWithLiveBooking(
   const activities = payload.groups.activities.map((item) => withMeta(item, getDeepLinkMeta(item, payload, item.price)));
   const hiddenGems = payload.groups.hiddenGems.map((item) =>
     withMeta(item, {
-      status: item.affiliateUrl ? "live" : "unavailable",
+      status: item.bookingReference?.affiliateEligible ? "live" : "unavailable",
       provider: item.provider,
       label: priceLabel(item.priceFrom, payload.inputs.currency),
-      bookingUrl: normalizeSafeUrl(item.affiliateUrl || item.deepLink),
+      bookingUrl: resolveSourceUrl(item),
       price: item.priceFrom,
       currency: payload.inputs.currency,
     }),

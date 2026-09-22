@@ -14,6 +14,13 @@ export type AvailabilityState =
   | "unavailable"
   | "needs_revalidation";
 
+export type DataQualityState =
+  | "LIVE_VERIFIED"
+  | "LIVE_PRICE_UNVERIFIED"
+  | "AFFILIATE_SEARCH_LINK"
+  | "ESTIMATED"
+  | "UNAVAILABLE";
+
 export type NormalizedTravelItem = {
   internal_id: string;
   supplier: string;
@@ -33,8 +40,22 @@ export type NormalizedTravelItem = {
   source_url: string | null;
   affiliate_eligible: boolean;
   last_validated_at: string;
+  freshness_expires_at?: string | null;
+  data_quality_status?: DataQualityState;
   metadata: Record<string, unknown>;
 };
+
+export type ProviderFailureCode =
+  | "PROVIDER_NOT_CONFIGURED"
+  | "PROVIDER_TIMEOUT"
+  | "PROVIDER_RATE_LIMITED"
+  | "PROVIDER_INVALID_RESPONSE"
+  | "PROVIDER_NO_RESULTS"
+  | "PROVIDER_UNSUPPORTED_DESTINATION";
+
+export type ProviderResult<T> =
+  | { ok: true; items: T[]; retrievedAt: string; partial: boolean }
+  | { ok: false; items: []; code: ProviderFailureCode; retryable: boolean; message: string };
 
 export type DestinationCatalogEntry = {
   id: string;

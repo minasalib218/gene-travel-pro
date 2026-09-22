@@ -3,7 +3,7 @@ import CreditBadge from "@/components/CreditBadge";
 
 export default function RecommendationPage() {
   return (
-    <ProtectedAI>
+    <ProtectedAI requiredFeature="AI Trip Personality Engine">
       {/* client badge */}
       <CreditBadge />
       <main className="min-h-screen text-white relative overflow-hidden">

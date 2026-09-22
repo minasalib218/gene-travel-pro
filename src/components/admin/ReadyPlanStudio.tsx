@@ -57,6 +57,7 @@ type PlanRecord = {
   currency: string;
   contentJson?: unknown;
   daysJson?: unknown;
+  updatedAt?: string | null;
   links?: Array<{
     kind: string;
     label: string;
@@ -596,7 +597,7 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
   }
 
   async function save(statusOverride?: "DRAFT" | "PUBLISHED") {
-    if (!plan || !content) return;
+    if (!plan || !content) return null;
 
     setSaving(true);
     setMessage("");
@@ -610,7 +611,9 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
         title: savedTitle,
         status: nextStatus,
         showOnHome: nextStatus === "PUBLISHED",
+        expectedUpdatedAt: plan.updatedAt,
         daysCount: content.days.length,
+        contentSaveIntent: "admin-ready-plan-full-content-save",
         contentJson: {
           ...content,
           publicHtml,
@@ -628,8 +631,9 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
 
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data?.ok) {
-        setMessage(data?.code || "Could not save ready plan.");
-        return;
+        const details = Array.isArray(data?.errors) ? `: ${data.errors.join(", ")}` : "";
+        setMessage(`${data?.code || "Could not save ready plan."}${details}`);
+        return null;
       }
 
       setPlan(data.plan);
@@ -650,9 +654,11 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
       );
       setMessage(mode === "create" ? "Ready Plan created." : "Ready Plan saved.");
 
-      if (mode === "create" && data.id) {
-        router.replace(`/admin/ready-plans/${data.id}/edit`);
+      if (mode === "create" && (data.plan?.id || data.id)) {
+        router.replace(`/admin/ready-plans/${data.plan?.id || data.id}/edit`);
       }
+
+      return data.plan as PlanRecord;
     } finally {
       setSaving(false);
     }
@@ -661,6 +667,13 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
   async function saveAsStatus(status: "DRAFT" | "PUBLISHED") {
     patchPlan({ status });
     await save(status);
+  }
+
+  async function previewCustomerView() {
+    const savedPlan = await save(plan.status === "PUBLISHED" ? "PUBLISHED" : "DRAFT");
+    const previewPlanId = savedPlan?.id || plan.id;
+    if (!previewPlanId) return;
+    window.open(`/admin/ready-plans/${previewPlanId}/preview`, "_blank", "noopener,noreferrer");
   }
 
   async function removePlan() {
@@ -795,17 +808,18 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
                   disabled={saving}
                   className="rounded-[18px] bg-[linear-gradient(135deg,#ff7a00,#ffb347)] px-7 py-4 text-sm font-semibold text-white shadow-[0_0_34px_rgba(255,122,0,0.34)] transition hover:scale-[1.01] disabled:opacity-60"
                 >
-                  {BOOK_NOW_LABEL}
+                  Post Ready Plan
                 </button>
                 <button
                   type="button"
-                  onClick={() => window.open(plan.slug ? `/ready-plans/${plan.slug}` : "/ready-plans", "_blank")}
+                  onClick={previewCustomerView}
+                  disabled={saving}
                   className="inline-flex items-center gap-3 rounded-full border border-white/18 bg-black/24 px-5 py-3 text-sm text-white/86 backdrop-blur-xl"
                 >
                   <span className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20">
                     <span className="ml-0.5 text-sm">▶</span>
                   </span>
-                  {BOOK_NOW_LABEL}
+                  Preview Customer View
                 </button>
               </div>
             </div>
@@ -1495,7 +1509,7 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
                 disabled={saving}
                 className="w-full rounded-[18px] bg-[linear-gradient(135deg,#ff7a00,#ffb347)] px-7 py-5 text-base font-semibold text-white shadow-[0_0_36px_rgba(255,122,0,0.34)] transition hover:scale-[1.01] disabled:opacity-60"
               >
-                {BOOK_NOW_LABEL.toUpperCase()}
+                POST READY PLAN
               </button>
               <div className="flex gap-2">
                 <button type="button" onClick={() => saveAsStatus("DRAFT")} disabled={saving} className={ghostButtonClass}>

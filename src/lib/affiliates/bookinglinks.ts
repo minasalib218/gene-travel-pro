@@ -26,3 +26,25 @@ export function buildBookingHotelLink(params: BookingHotelLinkParams): string {
 
   return url.toString();
 }
+
+export function buildBookingSearchUrl(args: {
+  city: string;
+  startDate: string;
+  endDate: string;
+  adults?: number;
+  rooms?: number;
+}) {
+  const base = process.env.NEXT_PUBLIC_BOOKING_AFFILIATE_BASE_URL || "https://www.booking.com/searchresults.html";
+  const url = new URL(base);
+  if (process.env.BOOKING_AFFILIATE_ID) {
+    url.searchParams.set("aid", process.env.BOOKING_AFFILIATE_ID);
+  } else if (process.env.NEXT_PUBLIC_BOOKING_AFFILIATE_AID) {
+    url.searchParams.set("aid", process.env.NEXT_PUBLIC_BOOKING_AFFILIATE_AID);
+  }
+  url.searchParams.set("ss", args.city);
+  url.searchParams.set("checkin", args.startDate);
+  url.searchParams.set("checkout", args.endDate);
+  url.searchParams.set("group_adults", String(Math.max(args.adults || 1, 1)));
+  url.searchParams.set("no_rooms", String(Math.max(args.rooms || 1, 1)));
+  return url.toString();
+}

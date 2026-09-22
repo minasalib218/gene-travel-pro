@@ -7,9 +7,9 @@ export type LemonPlanId = "starter" | "pro" | "agency";
 export type InternalPassTier = "basic" | "pro" | "agency";
 
 type VariantEnvKey =
-  | "LEMON_SQUEEZY_VARIANT_STARTER"
-  | "LEMON_SQUEEZY_VARIANT_PRO"
-  | "LEMON_SQUEEZY_VARIANT_AGENCY";
+  | "LEMONSQUEEZY_STARTER_VARIANT_ID"
+  | "LEMONSQUEEZY_PRO_VARIANT_ID"
+  | "LEMONSQUEEZY_AGENCY_VARIANT_ID";
 
 type LemonCustomData = {
   planId?: LemonPlanId;
@@ -40,19 +40,19 @@ const PLAN_CONFIG: Record<
   }
 > = {
   starter: {
-    variantEnv: "LEMON_SQUEEZY_VARIANT_STARTER",
+    variantEnv: "LEMONSQUEEZY_STARTER_VARIANT_ID",
     internalTier: "basic",
     tierActionsTotal: 3,
     editDays: 3,
   },
   pro: {
-    variantEnv: "LEMON_SQUEEZY_VARIANT_PRO",
+    variantEnv: "LEMONSQUEEZY_PRO_VARIANT_ID",
     internalTier: "pro",
     tierActionsTotal: 5,
     editDays: 6,
   },
   agency: {
-    variantEnv: "LEMON_SQUEEZY_VARIANT_AGENCY",
+    variantEnv: "LEMONSQUEEZY_AGENCY_VARIANT_ID",
     internalTier: "agency",
     tierActionsTotal: 8,
     editDays: 14,

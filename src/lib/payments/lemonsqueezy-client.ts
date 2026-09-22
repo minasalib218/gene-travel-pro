@@ -63,7 +63,8 @@ export async function openLemonOverlayCheckout(checkoutUrl: string) {
   await loadLemonJs();
 
   if (!window.LemonSqueezy?.Url?.Open) {
-    throw new Error("Lemon checkout overlay is not available.");
+    window.location.href = checkoutUrl;
+    return;
   }
 
   window.LemonSqueezy.Url.Open(checkoutUrl);

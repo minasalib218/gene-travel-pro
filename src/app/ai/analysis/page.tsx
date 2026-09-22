@@ -9,6 +9,8 @@ import AiSuiteFrame from "@/components/ai/AiSuiteFrame";
 import { generateVisaEntryAnalysis } from "@/lib/analysis/visaEntryAssistant";
 import { buildSmartBookingScorePayload } from "@/lib/analysis/smartBookingScore";
 import { calculateTravelHappinessScore } from "@/lib/analysis/travelHappinessScore";
+import { buildRecommendationPayloadFromSavedPlan } from "@/lib/recommendation/persistedPayload";
+import { readRecommendationPayload, storeRecommendationPayload } from "@/lib/recommendation/payloadStorage";
 import type { RecommendationPayload, SmartBookingScore, TravelHappinessScore, VisaEntryAnalysis } from "@/lib/recommendation/types";
 import { usePass } from "@/hooks/usePass";
 import { trackAnalyticsEvent } from "@/lib/analytics";
@@ -658,8 +660,10 @@ function DetailModal({
 function AnalysisPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { loading: passLoading, hasPass, remaining } = usePass();
+  const { loading: passLoading, hasPass, remaining, isAdminBypass, enabledFeatures } = usePass();
   const [payload, setPayload] = useState<RecommendationPayload | null>(null);
+  const [loadingSavedPlan, setLoadingSavedPlan] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeWidget, setActiveWidget] = useState<{ title: string; body: string; meta: string[] } | null>(null);
 
   useEffect(() => {
@@ -671,20 +675,49 @@ function AnalysisPageContent() {
 
   useEffect(() => {
     if (passLoading) return;
-    if (!hasPass || remaining <= 0) {
+    if (!isAdminBypass && (!hasPass || remaining <= 0)) {
       router.replace("/pricing?access=required");
     }
-  }, [hasPass, passLoading, remaining, router]);
+  }, [hasPass, isAdminBypass, passLoading, remaining, router]);
 
   useEffect(() => {
-    const raw = sessionStorage.getItem("gene-recommendation-payload");
-    if (!raw) return;
-    try {
-      setPayload(JSON.parse(raw));
-    } catch {
-      setPayload(null);
+    const parsed = readRecommendationPayload(searchParams.get("planId"));
+    if (!parsed) return;
+    setPayload(parsed);
+  }, [searchParams]);
+
+  const canUseVisaAssistant =
+    isAdminBypass || enabledFeatures.includes("Smart Visa & Entry Assistant");
+
+  useEffect(() => {
+    async function loadSavedPlan() {
+      const planId = searchParams.get("planId");
+      if (payload || !planId) return;
+      setLoadingSavedPlan(true);
+      setErrorMessage(null);
+      try {
+        const res = await fetch(`/api/plan/${planId}`, { method: "GET" });
+        const json = await res.json().catch(() => null);
+        if (!res.ok || !json?.plan) {
+          throw new Error(json?.message || "This analysis trip is not ready yet.");
+        }
+
+        const nextPayload = buildRecommendationPayloadFromSavedPlan(json.plan);
+        if (!nextPayload) {
+          throw new Error("This saved trip does not have a complete analysis payload yet.");
+        }
+
+        setPayload(nextPayload);
+        storeRecommendationPayload(nextPayload);
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : "This analysis trip is not ready yet.");
+      } finally {
+        setLoadingSavedPlan(false);
+      }
     }
-  }, []);
+
+    void loadSavedPlan();
+  }, [payload, searchParams]);
 
   const dayStress = useMemo(() => (payload?.dayPlan || []).map((day) => {
     const stability = Math.max(50, 94 - Math.max(day.items.length - 4, 0) * 8);
@@ -1039,8 +1072,14 @@ function AnalysisPageContent() {
       <AiSuiteFrame activePage="analysis" planId={searchParams.get("planId")}>
         <div className="rounded-[34px] border border-white/10 bg-white/[0.05] p-8 text-center backdrop-blur-2xl">
           <div className="text-sm uppercase tracking-[0.2em] text-[#ffb066]">Gene analysis</div>
-          <h1 className="mt-4 text-[32px] font-semibold leading-tight">No active trip payload found</h1>
-          <p className="mt-4 text-base leading-6 text-white/65">Open the recommendation page first so Gene can carry the selected trip into the analysis dashboard.</p>
+          <h1 className="mt-4 text-[32px] font-semibold leading-tight">
+            {loadingSavedPlan ? "Loading your analysis dashboard..." : "No active trip payload found"}
+          </h1>
+          <p className="mt-4 text-base leading-6 text-white/65">
+            {loadingSavedPlan
+              ? "Gene is restoring your analysis data from your saved trip."
+              : errorMessage || "Open the recommendation page first so Gene can carry the selected trip into the analysis dashboard."}
+          </p>
           <button type="button" onClick={() => router.push(searchParams.get("planId") ? `/ai/recommendation?planId=${searchParams.get("planId")}` : "/ai-planner")} className="mt-6 rounded-2xl bg-[#ff7a00] px-5 py-3 text-base font-semibold text-black">Return to recommendation</button>
         </div>
       </AiSuiteFrame>
@@ -1074,12 +1113,12 @@ function AnalysisPageContent() {
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <MetricRingCard label="Total Trip Cost" value={`$${Math.round(dashboardStats?.totalSpend || 0).toLocaleString()}`} note={`From selected recommendation items`} percent={Math.min(100, Math.max(30, Math.round(((dashboardStats?.totalSpend || 0) / Math.max(payload.inputs.budget, 1)) * 100)))} />
-          <MetricRingCard label="Cost per Traveler" value={`$${Math.round(dashboardStats?.perTraveler || 0).toLocaleString()}`} note="Avg. per person" percent={76} />
-          <MetricRingCard label="Budget Utilization" value={`${dashboardStats?.utilization || 0}%`} note="Of total budget" percent={dashboardStats?.utilization || 0} />
-          <MetricRingCard label="Emergency Buffer" value={`$${Math.round(dashboardStats?.emergencyBuffer || 0).toLocaleString()}`} note={`${Math.round(((dashboardStats?.emergencyBuffer || 0) / Math.max(payload.inputs.budget, 1)) * 100)}% of budget`} percent={Math.round(((dashboardStats?.emergencyBuffer || 0) / Math.max(payload.inputs.budget, 1)) * 100)} />
-          <MetricRingCard label="Pace Score" value={`${dashboardStats?.paceScore || 0}/10`} note="Perfect Balance" percent={Math.round((dashboardStats?.paceScore || 0) * 10)} />
+        <div className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:none] md:grid md:grid-cols-2 xl:grid-cols-5 xl:overflow-visible">
+          <div className="min-w-[210px] shrink-0 md:min-w-0"><MetricRingCard label="Total Trip Cost" value={`$${Math.round(dashboardStats?.totalSpend || 0).toLocaleString()}`} note={`From selected recommendation items`} percent={Math.min(100, Math.max(30, Math.round(((dashboardStats?.totalSpend || 0) / Math.max(payload.inputs.budget, 1)) * 100)))} /></div>
+          <div className="min-w-[210px] shrink-0 md:min-w-0"><MetricRingCard label="Cost per Traveler" value={`$${Math.round(dashboardStats?.perTraveler || 0).toLocaleString()}`} note="Avg. per person" percent={76} /></div>
+          <div className="min-w-[210px] shrink-0 md:min-w-0"><MetricRingCard label="Budget Utilization" value={`${dashboardStats?.utilization || 0}%`} note="Of total budget" percent={dashboardStats?.utilization || 0} /></div>
+          <div className="min-w-[210px] shrink-0 md:min-w-0"><MetricRingCard label="Emergency Buffer" value={`$${Math.round(dashboardStats?.emergencyBuffer || 0).toLocaleString()}`} note={`${Math.round(((dashboardStats?.emergencyBuffer || 0) / Math.max(payload.inputs.budget, 1)) * 100)}% of budget`} percent={Math.round(((dashboardStats?.emergencyBuffer || 0) / Math.max(payload.inputs.budget, 1)) * 100)} /></div>
+          <div className="min-w-[210px] shrink-0 md:min-w-0"><MetricRingCard label="Pace Score" value={`${dashboardStats?.paceScore || 0}/10`} note="Perfect Balance" percent={Math.round((dashboardStats?.paceScore || 0) * 10)} /></div>
         </div>
 
         <div className="grid gap-5 xl:grid-cols-2">
@@ -1468,7 +1507,7 @@ function AnalysisPageContent() {
           </DashboardPanel>
         ) : null}
 
-        {visaEntry ? (
+        {visaEntry && canUseVisaAssistant ? (
           <DashboardPanel title="Smart Visa & Entry Assistant" action={`${visaEntry.confidence}% confidence`} icon={<ShieldCheck size={18} />}>
             <div className="grid gap-4 xl:grid-cols-[0.92fr_1.08fr]">
               <div className="space-y-4">
@@ -1565,6 +1604,23 @@ function AnalysisPageContent() {
               </div>
             </div>
           </DashboardPanel>
+        ) : visaEntry ? (
+          <DashboardPanel title="Smart Visa & Entry Assistant" action="Pro feature" icon={<ShieldCheck size={18} />}>
+            <div className="rounded-[20px] border border-white/10 bg-black/20 p-5">
+              <div className="text-lg font-semibold text-white">Upgrade to Pro to unlock visa guidance</div>
+              <p className="mt-3 max-w-2xl text-sm leading-7 text-white/64">
+                Your current pass keeps the core analysis open, but visa and entry intelligence is only included on Pro and Agency.
+              </p>
+              <div className="mt-5">
+                <Link
+                  href="/pricing"
+                  className="inline-flex items-center rounded-[14px] border border-[#ff7a00]/35 bg-[#ff7a00]/10 px-4 py-2 text-sm font-medium text-[#ffb36c] transition hover:bg-[#ff7a00]/18"
+                >
+                  View upgrades
+                </Link>
+              </div>
+            </div>
+          </DashboardPanel>
         ) : null}
 
         <div className="grid gap-5 xl:grid-cols-[1.4fr_0.8fr]">
@@ -1585,7 +1641,7 @@ function AnalysisPageContent() {
           </div>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-[1fr_1fr_1fr_1.25fr]">
+        <div className="hidden gap-4 xl:grid xl:grid-cols-[1fr_1fr_1fr_1.25fr]">
           <button type="button" className="rounded-[22px] border border-white/10 bg-black/24 px-5 py-4 text-left text-white/84 shadow-[0_18px_44px_rgba(0,0,0,0.2)]">
             <div className="text-[18px] font-medium text-white">Share Analysis</div>
             <div className="mt-1 text-sm text-white/56">Send to your travel buddies</div>
@@ -1601,6 +1657,15 @@ function AnalysisPageContent() {
           <button type="button" onClick={() => { trackAnalyticsEvent("analysis_completed", { planId: payload.planId || searchParams.get("planId") || "", source: "analysis_page" }); router.push(`/ai/booking?planId=${payload.planId || searchParams.get("planId") || ""}`); }} className="rounded-[22px] bg-[linear-gradient(135deg,#ff7a00,rgba(255,160,62,0.96))] px-6 py-4 text-left text-black shadow-[0_20px_50px_rgba(255,122,0,0.26)]">
             <div className="text-[22px] font-medium">Continue to Booking</div>
             <div className="mt-1 text-sm text-black/70">Next Step →</div>
+          </button>
+        </div>
+        <div className="fixed inset-x-3 bottom-[82px] z-30 xl:hidden">
+          <button type="button" onClick={() => { trackAnalyticsEvent("analysis_completed", { planId: payload.planId || searchParams.get("planId") || "", source: "analysis_page_mobile" }); router.push(`/ai/booking?planId=${payload.planId || searchParams.get("planId") || ""}`); }} className="flex w-full items-center justify-between rounded-[18px] bg-[linear-gradient(135deg,#ff7a00,rgba(255,160,62,0.96))] px-4 py-3 text-left text-sm font-medium text-black shadow-[0_20px_50px_rgba(255,122,0,0.26)]">
+            <span>
+              <span className="block">Continue to Booking</span>
+              <span className="mt-0.5 block text-xs text-black/70">Carry scores and analysis forward</span>
+            </span>
+            <ArrowRight size={16} />
           </button>
         </div>
         <DetailModal open={Boolean(activeWidget)} title={activeWidget?.title || ""} body={activeWidget?.body || ""} meta={activeWidget?.meta || []} onClose={() => setActiveWidget(null)} />

@@ -30,6 +30,9 @@ import type {
   ReadyPlanSuggestion,
   ReadyPlanTimelineItem,
 } from "@/lib/ready-plan-content";
+import ReadyPlanFavoriteButton from "@/components/ready-plan/ReadyPlanFavoriteButton";
+import ReadyPlanViewTracker from "@/components/ready-plan/ReadyPlanViewTracker";
+import ReadyPlanTripActions from "@/components/ready-plan/ReadyPlanTripActions";
 
 type Props = {
   planId?: string;
@@ -37,6 +40,8 @@ type Props = {
   logoUrl?: string;
   content: ReadyPlanContent;
   bookableItemIds?: string[];
+  bookableItemRecordIds?: Record<string, string>;
+  trackView?: boolean;
 };
 
 const ease = [0.22, 1, 0.36, 1] as const;
@@ -144,6 +149,8 @@ export default function CinematicReadyPlanPage({
   logoUrl = "/images/logo.png",
   content,
   bookableItemIds = [],
+  bookableItemRecordIds = {},
+  trackView = true,
 }: Props) {
   const [activeDayIndex, setActiveDayIndex] = useState(0);
   const [storyOpen, setStoryOpen] = useState(false);
@@ -153,21 +160,13 @@ export default function CinematicReadyPlanPage({
   const activeDay = days[activeDayIndex] ?? days[0];
   const bookableItemIdSet = useMemo(() => new Set(bookableItemIds), [bookableItemIds]);
 
-  const firstBookableItem = useMemo(
-    () => days.flatMap((day) => day.timelineItems).find((item) => bookableItemIdSet.has(item.id)),
-    [bookableItemIdSet, days],
-  );
-
-  const readyPlanBookingHref =
-    planId && firstBookableItem
-      ? `/api/affiliate/redirect?itemId=${encodeURIComponent(`${planId}:${firstBookableItem.id}`)}`
-      : "#timeline";
+  const plannerHref = `/start-planning?readyPlan=${encodeURIComponent(slug)}`;
 
   const heroTitle = splitHeroTitle(content.hero.title);
 
   function getReadyPlanBookingHref(itemId: string, shouldShowButton: boolean) {
     if (!shouldShowButton || !planId || !bookableItemIdSet.has(itemId)) return undefined;
-    return `/api/affiliate/redirect?itemId=${encodeURIComponent(`${planId}:${itemId}`)}`;
+    return `/api/affiliate/redirect?itemId=${encodeURIComponent(`${planId}:${bookableItemRecordIds[itemId] ?? itemId}`)}`;
   }
 
   useEffect(() => {
@@ -213,6 +212,14 @@ export default function CinematicReadyPlanPage({
 
   return (
     <main className="min-h-screen overflow-hidden bg-[linear-gradient(180deg,#080707_0%,#130f0a_34%,#0a0908_100%)] text-white">
+      {planId && trackView ? (
+        <ReadyPlanViewTracker
+          readyPlanId={planId}
+          slug={slug}
+          title={content.hero.title}
+          destination={content.journeyOverview.destinations}
+        />
+      ) : null}
       <MobileReadyPlanView
         activeDay={activeDay}
         activeDayIndex={activeDayIndex}
@@ -222,7 +229,8 @@ export default function CinematicReadyPlanPage({
         logoUrl={logoUrl}
         overviewLines={overviewLines}
         primarySuggestion={primarySuggestion}
-        readyPlanBookingHref={readyPlanBookingHref}
+        plannerHref={plannerHref}
+        planId={planId}
         setActiveDayIndex={setActiveDayIndex}
         setStoryOpen={setStoryOpen}
         slug={slug}
@@ -257,7 +265,11 @@ export default function CinematicReadyPlanPage({
                 <Music4 size={16} className="text-[#ffd2a7]" />
                 <span>Cinematic Story</span>
               </div>
-              <Heart size={16} className="text-white/90" />
+              {planId ? (
+                <ReadyPlanFavoriteButton readyPlanId={planId} className="h-8 w-8 border-white/10 bg-white/5" />
+              ) : (
+                <Heart size={16} className="text-white/90" />
+              )}
               <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/25 bg-white/10 text-sm font-semibold backdrop-blur-xl">
                 G
               </div>
@@ -299,7 +311,7 @@ export default function CinematicReadyPlanPage({
 
               <div className="mt-8 flex flex-wrap items-center gap-4">
                 <Link
-                  href={readyPlanBookingHref}
+                  href={plannerHref}
                   className="inline-flex items-center gap-3 rounded-[18px] bg-[linear-gradient(135deg,#ff7a00,#ffab3d)] px-6 py-4 text-sm font-semibold text-white shadow-[0_0_34px_rgba(255,122,0,0.42)] transition hover:shadow-[0_0_46px_rgba(255,122,0,0.54)]"
                 >
                   {content.hero.primaryCtaText || "Plan Smarter With AI"}
@@ -315,6 +327,7 @@ export default function CinematicReadyPlanPage({
                   </span>
                   <span>View Full Timeline</span>
                 </a>
+                {planId ? <ReadyPlanTripActions readyPlanId={planId} /> : null}
               </div>
             </div>
 
@@ -599,7 +612,7 @@ export default function CinematicReadyPlanPage({
             </div>
             <div className="flex justify-start lg:justify-end">
               <Link
-                href={readyPlanBookingHref}
+                href={plannerHref}
                 className="inline-flex items-center gap-3 rounded-[16px] bg-[linear-gradient(135deg,#ff7a00,#ffab3d)] px-6 py-4 text-sm font-semibold text-white shadow-[0_0_32px_rgba(255,122,0,0.36)] transition hover:shadow-[0_0_42px_rgba(255,122,0,0.48)]"
               >
                 {content.footer.ctaText || "Plan Smarter With AI"}
@@ -692,7 +705,8 @@ function MobileReadyPlanView({
   logoUrl,
   overviewLines,
   primarySuggestion,
-  readyPlanBookingHref,
+  plannerHref,
+  planId,
   setActiveDayIndex,
   setStoryOpen,
   slug,
@@ -705,7 +719,8 @@ function MobileReadyPlanView({
   logoUrl: string;
   overviewLines: Array<{ label: string; value: string }>;
   primarySuggestion: ReadyPlanSuggestion | null;
-  readyPlanBookingHref: string;
+  plannerHref: string;
+  planId?: string;
   setActiveDayIndex: (value: number | ((current: number) => number)) => void;
   setStoryOpen: (value: boolean) => void;
   slug: string;
@@ -756,7 +771,7 @@ function MobileReadyPlanView({
 
         <div className="space-y-3">
           <Link
-            href={readyPlanBookingHref}
+            href={plannerHref}
             className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[12px] bg-[#ff7a00] px-4 text-[14px] font-bold text-white shadow-[0_0_28px_rgba(255,122,0,0.34)]"
           >
             Plan Smarter With AI <Sparkles size={18} />
@@ -768,6 +783,7 @@ function MobileReadyPlanView({
           >
             <Play size={16} /> View Full Timeline
           </button>
+          {planId ? <ReadyPlanTripActions readyPlanId={planId} /> : null}
         </div>
 
         <button
@@ -907,7 +923,7 @@ function MobileReadyPlanView({
           </div>
           <div className="mt-4 grid grid-cols-2 gap-3">
             <button type="button" onClick={() => setOverlay("details")} className="h-11 rounded-[12px] border border-black/12 bg-transparent text-[14px] font-semibold text-[#2d1f18]">View Details</button>
-            <Link href={`/start-planning?readyPlan=${encodeURIComponent(slug)}`} className="inline-flex h-11 items-center justify-center rounded-[12px] bg-[#ff7a00] text-[14px] font-semibold text-white">Edit Plan</Link>
+            <Link href={plannerHref} className="inline-flex h-11 items-center justify-center rounded-[12px] bg-[#ff7a00] text-[14px] font-semibold text-white">Edit Plan</Link>
           </div>
         </section>
 
@@ -917,7 +933,7 @@ function MobileReadyPlanView({
           <div className="relative">
             <h2 className="text-[20px] font-bold leading-6 text-white">{content.footer.title || "Your journey, but smarter."}</h2>
             <p className="mt-2 text-[13px] leading-5 text-white/78">{content.footer.subtitle}</p>
-            <Link href={readyPlanBookingHref} className="mt-4 inline-flex h-12 w-full items-center justify-center gap-2 rounded-[12px] bg-[#ff7a00] text-[14px] font-bold text-white">
+            <Link href={plannerHref} className="mt-4 inline-flex h-12 w-full items-center justify-center gap-2 rounded-[12px] bg-[#ff7a00] text-[14px] font-bold text-white">
               Plan Smarter With AI <Sparkles size={18} />
             </Link>
           </div>

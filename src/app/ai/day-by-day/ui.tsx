@@ -29,6 +29,8 @@ import {
 } from "lucide-react";
 import AiSuiteFrame from "@/components/ai/AiSuiteFrame";
 import { addItineraryItem, moveItineraryItem, removeItineraryItem, updateItineraryItem } from "@/lib/recommendation/itinerary";
+import { buildRecommendationPayloadFromSavedPlan } from "@/lib/recommendation/persistedPayload";
+import { readRecommendationPayload, storeRecommendationPayload } from "@/lib/recommendation/payloadStorage";
 import { buildCinematicStoryModeFromPayload } from "@/lib/story/cinematicStoryMode";
 import type {
   ActivityRecommendation,
@@ -628,6 +630,8 @@ export default function DayByDayWorkspace() {
   const searchParams = useSearchParams();
   const planId = searchParams.get("planId");
   const [payload, setPayload] = useState<RecommendationPayload | null>(null);
+  const [loadingSavedPlan, setLoadingSavedPlan] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [note, setNote] = useState("Review, customize and perfect your trip");
   const [savePulse, setSavePulse] = useState<"idle" | "saved">("idle");
   const [swapMode, setSwapMode] = useState(true);
@@ -645,10 +649,9 @@ export default function DayByDayWorkspace() {
   const storyScrollerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    const raw = sessionStorage.getItem("gene-recommendation-payload");
-    if (!raw) return;
+    const parsed = readRecommendationPayload(planId);
+    if (!parsed) return;
     try {
-      const parsed = JSON.parse(raw) as RecommendationPayload;
       setPayload(parsed);
       setCinematicStory(parsed.cinematicStory ?? buildCinematicStoryModeFromPayload(parsed));
       setExpandedDays(
@@ -657,11 +660,44 @@ export default function DayByDayWorkspace() {
     } catch {
       setPayload(null);
     }
-  }, []);
+  }, [planId]);
+
+  useEffect(() => {
+    async function loadSavedPlan() {
+      if (payload || !planId) return;
+      setLoadingSavedPlan(true);
+      setErrorMessage(null);
+      try {
+        const res = await fetch(`/api/plan/${planId}`, { method: "GET" });
+        const json = await res.json().catch(() => null);
+        if (!res.ok || !json?.plan) {
+          throw new Error(json?.message || "This day-by-day trip is not ready yet.");
+        }
+
+        const nextPayload = buildRecommendationPayloadFromSavedPlan(json.plan);
+        if (!nextPayload) {
+          throw new Error("This saved trip does not have a complete day-by-day payload yet.");
+        }
+
+        setPayload(nextPayload);
+        setCinematicStory(nextPayload.cinematicStory ?? buildCinematicStoryModeFromPayload(nextPayload));
+        setExpandedDays(
+          Object.fromEntries((nextPayload.dayPlan || []).map((day) => [day.day, true])),
+        );
+        storeRecommendationPayload(nextPayload);
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : "This day-by-day trip is not ready yet.");
+      } finally {
+        setLoadingSavedPlan(false);
+      }
+    }
+
+    void loadSavedPlan();
+  }, [payload, planId]);
 
   useEffect(() => {
     if (!payload) return;
-    sessionStorage.setItem("gene-recommendation-payload", JSON.stringify(payload));
+    storeRecommendationPayload(payload);
   }, [payload]);
 
   useEffect(() => {
@@ -775,7 +811,7 @@ export default function DayByDayWorkspace() {
     if (!payload) return;
     const nextPayload = cinematicStory ? { ...payload, cinematicStory } : payload;
     setPayload(nextPayload);
-    sessionStorage.setItem("gene-recommendation-payload", JSON.stringify(nextPayload));
+    storeRecommendationPayload(nextPayload);
     setSavePulse("saved");
     setNote("Arrangement saved. You can continue to analysis when ready.");
     window.setTimeout(() => setSavePulse("idle"), 1400);
@@ -785,7 +821,7 @@ export default function DayByDayWorkspace() {
     if (!payload) return;
     const nextPayload = cinematicStory ? { ...payload, cinematicStory } : payload;
     setPayload(nextPayload);
-    sessionStorage.setItem("gene-recommendation-payload", JSON.stringify(nextPayload));
+    storeRecommendationPayload(nextPayload);
     router.push(`/ai/analysis?planId=${payload.planId || planId || ""}`);
   }
 
@@ -940,14 +976,18 @@ export default function DayByDayWorkspace() {
     setNote(`${suggestion.title} was added to Day ${suggestionDay}.`);
   }
 
-  if (!payload) {
+  if (loadingSavedPlan || !payload) {
     return (
       <AiSuiteFrame activePage="dayByDay" planId={planId}>
-        <section className="rounded-[34px] border border-white/10 bg-black/30 p-8 shadow-[0_28px_90px_rgba(0,0,0,0.38)] backdrop-blur-2xl">
+        <section className="rounded-[34px] border border-white/10 bg-black/30 p-5 shadow-[0_28px_90px_rgba(0,0,0,0.38)] backdrop-blur-2xl md:p-8">
           <div className="text-sm uppercase tracking-[0.2em] text-[#ffbf82]">Day by day</div>
-          <h1 className="mt-4 text-[32px] font-semibold leading-tight text-white">There is no arranged trip in memory yet.</h1>
+          <h1 className="mt-4 text-[32px] font-semibold leading-tight text-white">
+            {loadingSavedPlan ? "Loading your arranged trip..." : "There is no arranged trip in memory yet."}
+          </h1>
           <p className="mt-4 max-w-2xl text-base leading-7 text-white/64">
-            Start from the recommendation page first so Gene can bring your selected stay, transport, flights, and activities into the itinerary editor.
+            {loadingSavedPlan
+              ? "Gene is restoring your day-by-day plan from your saved trip."
+              : errorMessage || "Start from the recommendation page first so Gene can bring your selected stay, transport, flights, and activities into the itinerary editor."}
           </p>
           <Link href={planId ? `/ai/recommendation?planId=${planId}` : "/ai/recommendation"} className="mt-8 inline-flex items-center gap-2 rounded-2xl bg-[#ff7a00] px-5 py-3 text-base font-semibold text-black">
             Return to recommendation
@@ -1044,13 +1084,13 @@ export default function DayByDayWorkspace() {
             >
               <ChevronLeft size={20} />
             </button>
-            <div className="grid flex-1 grid-cols-6">
+            <div className="flex flex-1 overflow-x-auto [scrollbar-width:none] xl:grid xl:grid-cols-6 xl:overflow-visible">
               {visibleDayTabs.map((day) => (
                 <button
                   key={`day-tab-${day.day}`}
                   type="button"
                   onClick={() => scrollToDay(day.day)}
-                  className={`border-l border-white/6 px-2 py-3 first:border-l-0 ${activeDay === day.day ? "bg-[radial-gradient(circle_at_center,rgba(255,122,0,0.16),rgba(255,122,0,0.04)_58%,transparent_80%)]" : ""}`}
+                  className={`min-w-[118px] shrink-0 border-l border-white/6 px-2 py-3 first:border-l-0 xl:min-w-0 ${activeDay === day.day ? "bg-[radial-gradient(circle_at_center,rgba(255,122,0,0.16),rgba(255,122,0,0.04)_58%,transparent_80%)]" : ""}`}
                 >
                   <div className={`mx-auto max-w-[112px] rounded-[16px] border px-2.5 py-2.5 transition ${activeDay === day.day ? "border-[#ff7a00]/45 bg-[#ff7a00]/08 text-white shadow-[0_0_24px_rgba(255,122,0,0.12)]" : "border-transparent text-white/74"}`}>
                     <div className="text-[16px] font-medium leading-none">Day {day.day}</div>
@@ -1294,6 +1334,15 @@ export default function DayByDayWorkspace() {
             </button>
           </div>
         </div>
+
+        <button
+          type="button"
+          onClick={() => addItem(activeDay, "afternoon")}
+          className="fixed bottom-[88px] right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-[linear-gradient(135deg,#ff7a00,rgba(255,162,74,0.96))] text-black shadow-[0_18px_44px_rgba(255,122,0,0.28)] xl:hidden"
+          aria-label="Add plan item"
+        >
+          <Plus size={20} />
+        </button>
 
         <OverlayModal
           open={Boolean(storyModal)}

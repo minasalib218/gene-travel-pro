@@ -18,6 +18,8 @@ import {
   Wallet,
 } from "lucide-react";
 import AiSuiteFrame from "@/components/ai/AiSuiteFrame";
+import { buildRecommendationPayloadFromSavedPlan } from "@/lib/recommendation/persistedPayload";
+import { readRecommendationPayload, storeRecommendationPayload } from "@/lib/recommendation/payloadStorage";
 import { buildBookingStateFromPayload, refreshBookingTotals, updateBookingItemStatus } from "@/lib/recommendation/bookingState";
 import type { RecommendationPayload } from "@/lib/recommendation/types";
 import { trackAnalyticsEvent } from "@/lib/analytics";
@@ -58,62 +60,6 @@ function getRouteLabel(payload: RecommendationPayload) {
     ? payload.inputs.destinations.map((item) => `${item.city}, ${item.country}`)
     : [payload.inputs.destination];
   return [origin, ...stops.filter(Boolean)].filter(Boolean).join("  ->  ");
-}
-
-function buildSummaryPayloadFromPlan(plan: any): RecommendationPayload | null {
-  const summaryJson = plan?.summaryJson as Record<string, any> | null;
-  if (summaryJson?.payload) return summaryJson.payload as RecommendationPayload;
-  if (!summaryJson || !summaryJson.dayPlan) return null;
-
-  const inputsJson = (plan?.inputsJson as Record<string, any> | null) ?? {};
-  const recommendationJson = (plan?.recommendationJson as Record<string, any> | null) ?? {};
-  const analysisJson = (plan?.analysisJson as Record<string, any> | null) ?? {};
-
-  return {
-    inputs: {
-      destination: summaryJson.destination || inputsJson.destination || plan.destination,
-      departureCity: inputsJson.departureCity || "",
-      startDate: typeof plan.startDate === "string" ? plan.startDate : new Date(plan.startDate).toISOString(),
-      endDate: typeof plan.endDate === "string" ? plan.endDate : new Date(plan.endDate).toISOString(),
-      budget: Number(inputsJson.budget ?? 0),
-      currency: String(inputsJson.currency ?? "USD"),
-      travelStyle: String(inputsJson.travelStyle ?? "balanced"),
-      travelersCount: Number(inputsJson.travelersCount ?? inputsJson.adults ?? 1),
-      travelerType: (inputsJson.travelerType ?? inputsJson.travelersType ?? "couple") as any,
-      hotelClass: String(inputsJson.hotelClass ?? "4 star"),
-      interests: Array.isArray(inputsJson.interests) ? inputsJson.interests : [],
-      preferredTransport: String(inputsJson.preferredTransport ?? "private"),
-      walkingTolerance: Number(inputsJson.walkingTolerance ?? 60),
-      specialRequests: String(inputsJson.specialRequests ?? ""),
-      destinations: Array.isArray(inputsJson.trip?.destinations) ? inputsJson.trip.destinations : [],
-      preferredHotels: Array.isArray(inputsJson.stay?.preferredHotels) ? inputsJson.stay.preferredHotels : [],
-      adults: Number(inputsJson.adults ?? 0),
-      kids: Number(inputsJson.kids ?? 0),
-      elderly: Number(inputsJson.elderly ?? 0),
-      fullInput: inputsJson,
-    },
-    groups: recommendationJson.groups ?? summaryJson.groups ?? {
-      hotels: [],
-      flights: [],
-      activities: [],
-      restaurants: [],
-      transports: [],
-      cars: [],
-      hiddenGems: [],
-    },
-    selected: recommendationJson.selected ?? summaryJson.selected,
-    selectedByDestination: recommendationJson.selectedByDestination ?? summaryJson.selectedByDestination ?? undefined,
-    dayPlan: summaryJson.dayPlan,
-    analysis: analysisJson.analysis ?? summaryJson.analysis ?? [],
-    modules: analysisJson.modules ?? summaryJson.modules ?? [],
-    createdAt: summaryJson.createdAt ?? new Date().toISOString(),
-    planId: summaryJson.planInputId,
-    mode: recommendationJson.mode ?? "ai",
-    aiSummary: recommendationJson.aiSummary ?? undefined,
-    summaryState: summaryJson.payload?.summaryState ?? summaryJson.summaryState ?? undefined,
-    livePricing: summaryJson.payload?.livePricing ?? undefined,
-    cinematicStory: summaryJson.payload?.cinematicStory ?? summaryJson.cinematicStory ?? undefined,
-  };
 }
 
 function SectionCard({
@@ -163,16 +109,21 @@ export default function BookingClient() {
   const [notice, setNotice] = useState<string | null>(null);
   const [bookingKeyInFlight, setBookingKeyInFlight] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    flight: true,
+    hotel: true,
+    transportation: false,
+    activity_trip: false,
+    event: false,
+    restaurant: false,
+  });
+  const [summaryOpen, setSummaryOpen] = useState(false);
 
   useEffect(() => {
-    const raw = sessionStorage.getItem("gene-recommendation-payload");
-    if (!raw) return;
-    try {
-      setPayload(JSON.parse(raw));
-    } catch {
-      setPayload(null);
-    }
-  }, []);
+    const parsed = readRecommendationPayload(planId);
+    if (!parsed) return;
+    setPayload(parsed);
+  }, [planId]);
 
   useEffect(() => {
     async function loadSavedPlan() {
@@ -183,10 +134,11 @@ export default function BookingClient() {
         const res = await fetch(`/api/plan/${planId}`, { method: "GET" });
         const json = await res.json().catch(() => null);
         if (!res.ok || !json?.plan) throw new Error(json?.message || "This booking plan is not ready yet.");
-        const nextPayload = buildSummaryPayloadFromPlan(json.plan);
+        const nextPayload = buildRecommendationPayloadFromSavedPlan(json.plan);
         if (!nextPayload) throw new Error("This saved plan does not have a complete booking payload yet.");
         setPayload(nextPayload);
         setSavedPlanId(json.plan.id);
+        storeRecommendationPayload(nextPayload);
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : "This booking plan is not ready yet.");
       } finally {
@@ -216,7 +168,7 @@ export default function BookingClient() {
 
   useEffect(() => {
     if (!payload) return;
-    sessionStorage.setItem("gene-recommendation-payload", JSON.stringify(payload));
+    storeRecommendationPayload(payload);
   }, [payload]);
 
   useEffect(() => {
@@ -319,7 +271,7 @@ export default function BookingClient() {
         bookingState: refreshBookingTotals(bookingState),
       },
     };
-    sessionStorage.setItem("gene-recommendation-payload", JSON.stringify(nextPayload));
+    storeRecommendationPayload(nextPayload);
     setPayload(nextPayload);
     trackAnalyticsEvent("summary_viewed", {
       source: "booking_continue",
@@ -384,23 +336,66 @@ export default function BookingClient() {
           <div className="space-y-5">
             {sectionOrder.map((section) => {
               const items = groupedItems[section.key] || [];
+              const sectionOpen = expandedSections[section.key] ?? false;
               return (
                 <SectionCard
                   key={section.key}
                   title={section.label}
                   icon={section.icon}
-                  action={<div className="text-[12px] text-white/46">{items.length} selected</div>}
+                  action={
+                    <button
+                      type="button"
+                      onClick={() => setExpandedSections((current) => ({ ...current, [section.key]: !sectionOpen }))}
+                      className="text-[12px] text-white/46"
+                    >
+                      {items.length} selected {sectionOpen ? "−" : "+"}
+                    </button>
+                  }
                 >
-                  {items.length === 0 ? (
+                  {!sectionOpen ? (
+                    <div className="rounded-[18px] border border-white/10 bg-black/18 px-4 py-4 text-[13px] text-white/56">
+                      Tap to review {items.length || "0"} selected {section.label.toLowerCase()}.
+                    </div>
+                  ) : items.length === 0 ? (
                     <div className="rounded-[18px] border border-white/10 bg-black/18 px-4 py-4 text-[13px] text-white/56">
                       No confirmed {section.label.toLowerCase()} selected yet.
                     </div>
                   ) : (
-                    <div className="space-y-3">
+                    <div className="space-y-3 md:space-y-3">
+                      <div className="flex gap-3 overflow-x-auto pb-2 md:hidden [scrollbar-width:none]">
+                        {items.map((item) => (
+                          <div
+                            key={`mobile-${item.key}`}
+                            className="min-w-[280px] shrink-0 rounded-[20px] border border-white/10 bg-black/20 p-3.5"
+                          >
+                            <div className="relative h-[112px] overflow-hidden rounded-[16px] border border-white/10">
+                              {item.image ? (
+                                <Image src={item.image} alt={item.title} fill className="object-cover" />
+                              ) : (
+                                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,122,0,0.18),transparent_45%),linear-gradient(180deg,rgba(255,255,255,0.06),rgba(0,0,0,0.86))]" />
+                              )}
+                            </div>
+                            <div className="mt-3 text-[16px] font-medium text-white">{item.title}</div>
+                            <div className="mt-1 text-[12px] text-white/54">{item.subtitle}</div>
+                            <div className="mt-3 flex items-center justify-between gap-3">
+                              <div className="text-[18px] font-medium text-white">{formatCurrency(item.finalPrice, currency)}</div>
+                              <button
+                                type="button"
+                                onClick={() => handleBookNow(item.key)}
+                                disabled={bookingKeyInFlight === item.key || item.availabilityState === "unavailable"}
+                                className="inline-flex items-center gap-2 rounded-[14px] bg-[linear-gradient(135deg,#ff7a00,rgba(255,166,74,0.96))] px-4 py-2.5 text-[13px] font-medium text-black"
+                              >
+                                <ExternalLink size={14} />
+                                {item.availabilityState === "unavailable" ? "Unavailable" : bookingKeyInFlight === item.key ? "Opening..." : "Book"}
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                       {items.map((item) => (
                         <div
                           key={item.key}
-                          className="grid gap-3 rounded-[20px] border border-white/10 bg-black/20 p-3.5 md:grid-cols-[120px_minmax(0,1fr)_auto]"
+                          className="hidden gap-3 rounded-[20px] border border-white/10 bg-black/20 p-3.5 md:grid md:grid-cols-[120px_minmax(0,1fr)_auto]"
                         >
                           <div className="relative h-[112px] overflow-hidden rounded-[16px] border border-white/10">
                             {item.image ? (
@@ -462,15 +457,15 @@ export default function BookingClient() {
                               <div className="text-[22px] font-medium text-white">{formatCurrency(item.finalPrice, currency)}</div>
                               <div className="mt-1 text-[11px] text-white/48">Confirmed cost</div>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => handleBookNow(item.key)}
-                              disabled={bookingKeyInFlight === item.key}
-                              className="inline-flex items-center gap-2 rounded-[14px] bg-[linear-gradient(135deg,#ff7a00,rgba(255,166,74,0.96))] px-4 py-2.5 text-[13px] font-medium text-black shadow-[0_18px_44px_rgba(255,122,0,0.22)] transition hover:translate-y-[-1px] disabled:cursor-wait disabled:opacity-60"
-                            >
-                              <ExternalLink size={14} />
-                              {bookingKeyInFlight === item.key ? "Opening..." : "Book Now"}
-                            </button>
+                              <button
+                                type="button"
+                                onClick={() => handleBookNow(item.key)}
+                                disabled={bookingKeyInFlight === item.key || item.availabilityState === "unavailable"}
+                                className="inline-flex items-center gap-2 rounded-[14px] bg-[linear-gradient(135deg,#ff7a00,rgba(255,166,74,0.96))] px-4 py-2.5 text-[13px] font-medium text-black shadow-[0_18px_44px_rgba(255,122,0,0.22)] transition hover:translate-y-[-1px] disabled:cursor-wait disabled:opacity-60"
+                              >
+                                <ExternalLink size={14} />
+                                {item.availabilityState === "unavailable" ? "Unavailable" : bookingKeyInFlight === item.key ? "Opening..." : "Book Now"}
+                              </button>
                           </div>
                         </div>
                       ))}
@@ -485,27 +480,39 @@ export default function BookingClient() {
             <SectionCard
               title="Trip Summary"
               icon={<Wallet size={18} />}
-              action={<div className="text-[12px] text-white/46">Confirmed costs only</div>}
+              action={
+                <button type="button" onClick={() => setSummaryOpen((current) => !current)} className="text-[12px] text-white/46">
+                  {summaryOpen ? "Hide" : "Show"}
+                </button>
+              }
             >
-              <div className="space-y-3">
-                {[
-                  ["Flights", totals.flights],
-                  ["Hotels", totals.hotels],
-                  ["Transportation", totals.transportation],
-                  ["Trips & Activities", totals.trips],
-                  ["Events", totals.events],
-                  ["Restaurants", totals.restaurants],
-                ].map(([label, value]) => (
-                  <div key={label} className="flex items-center justify-between gap-3 rounded-[16px] border border-white/10 bg-black/18 px-4 py-3">
-                    <div className="text-[13px] text-white/68">{label}</div>
-                    <div className="text-[16px] font-medium text-white">{formatCurrency(Number(value), currency)}</div>
+              {summaryOpen ? (
+                <>
+                  <div className="space-y-3">
+                    {[
+                      ["Flights", totals.flights],
+                      ["Hotels", totals.hotels],
+                      ["Transportation", totals.transportation],
+                      ["Trips & Activities", totals.trips],
+                      ["Events", totals.events],
+                      ["Restaurants", totals.restaurants],
+                    ].map(([label, value]) => (
+                      <div key={label} className="flex items-center justify-between gap-3 rounded-[16px] border border-white/10 bg-black/18 px-4 py-3">
+                        <div className="text-[13px] text-white/68">{label}</div>
+                        <div className="text-[16px] font-medium text-white">{formatCurrency(Number(value), currency)}</div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-              <div className="mt-4 rounded-[18px] border border-[#ff7a00]/22 bg-[#ff7a00]/08 px-4 py-4">
-                <div className="text-[12px] uppercase tracking-[0.16em] text-[#ffcf9d]">Total Confirmed Trip Cost</div>
-                <div className="mt-2 text-[28px] font-semibold text-white">{formatCurrency(totals.totalConfirmedCost, currency)}</div>
-              </div>
+                  <div className="mt-4 rounded-[18px] border border-[#ff7a00]/22 bg-[#ff7a00]/08 px-4 py-4">
+                    <div className="text-[12px] uppercase tracking-[0.16em] text-[#ffcf9d]">Total Confirmed Trip Cost</div>
+                    <div className="mt-2 text-[28px] font-semibold text-white">{formatCurrency(totals.totalConfirmedCost, currency)}</div>
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-[18px] border border-white/10 bg-black/18 px-4 py-4 text-[13px] text-white/56">
+                  Trip summary is collapsed on mobile. Open it to review totals.
+                </div>
+              )}
             </SectionCard>
 
             <SectionCard title="Booking Readiness" icon={<Clock3 size={18} />}>
@@ -527,7 +534,7 @@ export default function BookingClient() {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-4 rounded-[22px] border border-[#ff7a00]/18 bg-[linear-gradient(180deg,rgba(255,122,0,0.08),rgba(0,0,0,0.18))] px-4 py-4 shadow-[0_22px_60px_rgba(0,0,0,0.2)]">
+        <div className="hidden flex-wrap items-center justify-between gap-4 rounded-[22px] border border-[#ff7a00]/18 bg-[linear-gradient(180deg,rgba(255,122,0,0.08),rgba(0,0,0,0.18))] px-4 py-4 shadow-[0_22px_60px_rgba(0,0,0,0.2)] xl:flex">
           <div className="flex items-center gap-3">
             <CalendarDays size={18} className="text-[#ff9d4d]" />
             <div>
@@ -541,6 +548,20 @@ export default function BookingClient() {
             className="inline-flex items-center gap-2 rounded-[16px] bg-[linear-gradient(135deg,#ff7a00,rgba(255,166,74,0.96))] px-5 py-3 text-[14px] font-medium text-black shadow-[0_18px_44px_rgba(255,122,0,0.22)] transition hover:translate-y-[-1px]"
           >
             Continue to Summary
+            <ArrowRight size={16} />
+          </button>
+        </div>
+
+        <div className="fixed inset-x-3 bottom-[82px] z-30 xl:hidden">
+          <button
+            type="button"
+            onClick={continueToSummary}
+            className="flex w-full items-center justify-between rounded-[18px] bg-[linear-gradient(135deg,#ff7a00,rgba(255,166,74,0.96))] px-4 py-3 text-left text-sm font-medium text-black shadow-[0_18px_44px_rgba(255,122,0,0.22)]"
+          >
+            <span>
+              <span className="block">Continue to Summary</span>
+              <span className="mt-0.5 block text-xs text-black/70">Trip total {formatCurrency(totals.totalConfirmedCost, currency)}</span>
+            </span>
             <ArrowRight size={16} />
           </button>
         </div>

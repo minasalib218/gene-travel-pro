@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createRequestSupabaseClient } from "@/lib/admin/serverRouteClient";
-import { fetchAdminProfile, isAdminRole } from "@/lib/admin/getAdminProfile";
+import { getSupabaseAdminProfile, isAdminRole } from "@/lib/admin/getAdminProfile";
 
 export async function POST(req: Request) {
   try {
@@ -24,7 +24,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, code: "INVALID_CREDENTIALS" }, { status: 401 });
     }
 
-    const profile = await fetchAdminProfile(supabase, data.user.id);
+    const profile = await getSupabaseAdminProfile(data.user.id);
     if (!profile || !isAdminRole(profile.role)) {
       await supabase.auth.signOut();
       return NextResponse.json({ ok: false, code: "NOT_ADMIN" }, { status: 403 });

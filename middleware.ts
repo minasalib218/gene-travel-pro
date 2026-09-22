@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { getSupabaseAnonKey, getSupabaseUrl } from "@/lib/env";
 
-async function getAuthState(req: NextRequest, res: NextResponse) {
+async function getAuthState(req: NextRequest, res: NextResponse, includeAdminRole = false) {
   const supabaseUrl = getSupabaseUrl();
   const supabaseAnonKey = getSupabaseAnonKey();
 
@@ -30,11 +30,9 @@ async function getAuthState(req: NextRequest, res: NextResponse) {
     return { configured: true as const, user: null, isAdmin: false };
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
+  const profile = includeAdminRole
+    ? (await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle()).data
+    : null;
 
   return {
     configured: true as const,
@@ -43,27 +41,41 @@ async function getAuthState(req: NextRequest, res: NextResponse) {
   };
 }
 
+function redirectWithCookies(req: NextRequest, cookieSource: NextResponse, pathname: string) {
+  const url = req.nextUrl.clone();
+  url.pathname = pathname;
+  url.search = "";
+  const redirect = NextResponse.redirect(url);
+
+  cookieSource.cookies.getAll().forEach((cookie) => {
+    redirect.cookies.set(cookie);
+  });
+
+  return redirect;
+}
+
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
   const pathname = req.nextUrl.pathname;
+  const pathWithSearch = `${pathname}${req.nextUrl.search}`;
   const entry = req.nextUrl.searchParams.get("entry");
   const isAdminRoute = pathname.startsWith("/admin");
   const protectedPrefixes = ["/ai", "/ai-planner", "/planner", "/editor", "/plan-summary", "/profile"];
   const needsUserAuth = protectedPrefixes.some((prefix) => pathname.startsWith(prefix));
+  const isSignInRoute = pathname === "/signin" || pathname.startsWith("/signin/");
 
-  if (!isAdminRoute && !needsUserAuth) {
-    return res;
+  if (!isAdminRoute && !needsUserAuth && !isSignInRoute) return res;
+
+  const auth = await getAuthState(req, res, isAdminRoute);
+
+  if (isSignInRoute && auth.user) {
+    return redirectWithCookies(req, res, "/profile");
   }
-
-  const auth = await getAuthState(req, res);
 
   if (pathname.startsWith("/admin/login")) {
     if (auth.isAdmin || entry === "admin") return res;
 
-    const url = req.nextUrl.clone();
-    url.pathname = "/";
-    url.search = "";
-    return NextResponse.redirect(url);
+    return redirectWithCookies(req, res, "/");
   }
 
   if (isAdminRoute) {
@@ -72,17 +84,23 @@ export async function middleware(req: NextRequest) {
     const url = req.nextUrl.clone();
     url.pathname = "/admin/login";
     url.searchParams.set("entry", "admin");
-    url.searchParams.set("next", pathname);
-    return NextResponse.redirect(url);
+    url.searchParams.set("next", pathWithSearch);
+    const redirect = NextResponse.redirect(url);
+    res.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
+    return redirect;
   }
+
+  if (!needsUserAuth) return res;
 
   if (auth.isAdmin) return res;
 
   if (!auth.configured || !auth.user) {
     const url = req.nextUrl.clone();
     url.pathname = "/signin";
-    url.searchParams.set("next", pathname);
-    return NextResponse.redirect(url);
+    url.searchParams.set("next", pathWithSearch);
+    const redirect = NextResponse.redirect(url);
+    res.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
+    return redirect;
   }
 
   return res;
@@ -90,18 +108,6 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    "/admin/:path*",
-    "/admin/customers/:path*",
-    "/admin/analytics/:path*",
-    "/admin/accounting/:path*",
-    "/admin/ready-plans/:path*",
-    "/admin/account/:path*",
-    "/ai/:path*",
-    "/ai-planner/:path*",
-    "/planner/:path*",
-    "/editor/:path*",
-    "/plan-summary/:path*",
-    "/profile",
-    "/profile/:path*",
+    "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif|ico|css|js|map|txt|xml|woff|woff2)$).*)",
   ],
 };

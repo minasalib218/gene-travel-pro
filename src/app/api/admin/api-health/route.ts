@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin/requireAdmin";
+import { hasSupabaseAdminKey } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
 
 const SERVICES = [
   { key: "OpenAI", env: "OPENAI_API_KEY" },
-  { key: "Supabase", env: "SUPABASE_SERVICE_ROLE_KEY" },
-  { key: "Payment Provider", env: "PADDLE_API_KEY" },
+  { key: "Supabase", env: "SUPABASE_ADMIN_KEY" },
+  { key: "Payment Provider", env: "LEMONSQUEEZY_API_KEY" },
   { key: "Email Provider", env: "RESEND_API_KEY" },
   { key: "Booking API", env: "BOOKING_API_KEY" },
   { key: "Flights API", env: "AMADEUS_API_KEY" },
@@ -32,7 +33,9 @@ export async function GET() {
       ok: true,
       services: SERVICES.map((service) => {
         const row = latestMap.get(service.key);
-        const configured = Boolean(process.env[service.env]);
+        const configured = service.key === "Supabase"
+          ? hasSupabaseAdminKey()
+          : Boolean(process.env[service.env]);
         return {
           serviceName: service.key,
           status: row?.status ?? (configured ? "OK" : "NOT_CONFIGURED"),

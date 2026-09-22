@@ -21,6 +21,34 @@ enum PlanStatus {
   CONFIRMED
 }
 
+enum PlanningStage {
+  DRAFT_INPUT
+  RECOMMENDATIONS_GENERATING
+  RECOMMENDATIONS_READY
+  SELECTIONS_CONFIRMED
+  TIMELINE_GENERATING
+  TIMELINE_READY
+  GENERATION_FAILED
+  SUMMARY_READY
+  ARCHIVED
+}
+
+enum GenerationStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum ProcessingStatus {
+  RECEIVED
+  PROCESSING
+  COMPLETED
+  FAILED_RETRYABLE
+  REQUIRES_RECONCILIATION
+  DUPLICATE
+}
+
 model PlanRecommendation {
   id          String   @id @default(cuid())
   planInputId String
@@ -158,6 +186,7 @@ model Profile {
   supportTickets SupportTicket[]
   trafficEvents TrafficEvent[]
   plans  Plan[]
+  travelDocuments TravelDocument[]
 
   @@map("profiles")
 }
@@ -267,13 +296,17 @@ model WebhookEvent {
   payload   Json
   createdAt DateTime @default(now())
   processedAt DateTime?
+  status ProcessingStatus @default(RECEIVED)
+  attemptCount Int @default(0)
+  lastError String?
+  updatedAt DateTime @updatedAt
 
   @@index([provider])
   @@map("webhook_events")
 }
 
 model CreditLedger {
-  id            String   @id @default(cuid())
+  id            String   @id @default(uuid()) @db.Uuid
   userId        String?
   customerEmail String?
   passId        String?
@@ -287,6 +320,10 @@ model CreditLedger {
   reason        String?
   metadata      Json?
   createdAt     DateTime @default(now())
+  idempotencyKey String? @unique
+  generationId String?
+  planId String?
+  actorType String @default("USER")
 
   profile Profile? @relation(fields: [userId], references: [id], onDelete: SetNull)
   pass    Pass?    @relation(fields: [passId], references: [id], onDelete: SetNull)
@@ -295,6 +332,8 @@ model CreditLedger {
   @@index([userId])
   @@index([paymentId])
   @@index([passId])
+  @@index([generationId])
+  @@index([planId])
   @@map("credit_ledger")
 }
 
@@ -364,6 +403,7 @@ model Plan {
   id     String  @id @default(uuid())
   userId String
   passId String?
+  creationKey String? @unique
 
   status PlanStatus @default(DRAFT)
 
@@ -377,16 +417,48 @@ model Plan {
   analysisJson       Json?
   summaryJson        Json?
 
+  planningStage PlanningStage @default(DRAFT_INPUT)
+  version Int @default(1)
+  lastError String?
+  legacyImportCompletedAt DateTime?
+
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
   pass Pass?   @relation(fields: [passId], references: [id], onDelete: SetNull)
 
   days PlanDay[]
+  generations PlanGeneration[]
 
   @@index([userId])
   @@index([passId])
+  @@index([userId, updatedAt])
   @@map("plans")
+}
+
+model PlanGeneration {
+  id             String @id @default(uuid())
+  planId         String
+  userId         String
+  idempotencyKey String @unique
+  status         GenerationStatus @default(PENDING)
+  requestJson    Json?
+  resultJson     Json?
+  errorCode      String?
+  errorMessage   String?
+  chargedAt      DateTime?
+  refundedAt     DateTime?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  plan Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([planId, status])
+  @@map("plan_generations")
 }
 
 // =========================
@@ -457,6 +529,10 @@ model TierActionLog {
   actionType String?
   planId     String?
   meta       Json?
+  status     GenerationStatus @default(PENDING)
+  refundedAt DateTime?
+  completedAt DateTime?
+  errorCode String?
 
   createdAt DateTime @default(now())
 
@@ -742,6 +818,29 @@ model SupportTicket {
 
   @@index([email, status])
   @@map("support_tickets")
+}
+
+model TravelDocument {
+  id          String    @id @default(cuid())
+  userId      String
+  tripId      String?
+  type        String
+  displayName String
+  storageKey  String
+  mimeType    String
+  fileSize    Int
+  expiryDate  DateTime?
+  status      String    @default("ACTIVE")
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  profile Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, status])
+  @@index([tripId])
+  @@map("travel_documents")
 }
 
 model TrafficEvent {

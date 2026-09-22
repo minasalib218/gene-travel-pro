@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   ActivityRecommendation,
   AnalysisInsight,
   AnalysisModule,
@@ -9,6 +9,7 @@ import type {
   UserTripInput,
 } from "@/lib/recommendation/types";
 import { annotateDayPlanWithCrowd } from "@/lib/crowd/crowdPredictor";
+import { validateAndAdjustDayPlan } from "@/lib/travel-engine/timing-feasibility";
 
 function dateRange(startDate: string, endDate: string) {
   const dates: string[] = [];
@@ -222,6 +223,8 @@ export async function generateAiDayPlan(
     activityDays?: Record<string, number>;
     itemDayOverrides?: Record<string, number>;
     hiddenItemIds?: string[];
+    includeCrowd?: boolean;
+    selectedByDestination?: Record<string, SelectedRecommendations>;
   },
 ): Promise<DayPlan[]> {
   const dates = dateRange(inputs.startDate, inputs.endDate);
@@ -261,6 +264,14 @@ export async function generateAiDayPlan(
     items: [],
   }));
 
+  const selectionStops = destinations.map((destination) => ({
+    destination,
+    selected: options?.selectedByDestination?.[destination.id] ?? null,
+  }));
+  const primarySelection = selectionStops[0]?.selected ?? selected;
+  const lastSelection =
+    [...selectionStops].reverse().find((stop) => stop.selected)?.selected ?? selected;
+
   const itemDayOverrides = options?.itemDayOverrides ?? {};
   const hiddenItemIds = new Set(options?.hiddenItemIds ?? []);
   const clampDay = (value?: number) => Math.min(totalDays, Math.max(1, value ?? 1));
@@ -270,7 +281,7 @@ export async function generateAiDayPlan(
     plan[targetDay - 1].items.push({ ...item, day: targetDay });
   };
 
-  if (selected.flight) {
+  if (primarySelection.flight) {
     pushItem(
       1,
       makeItem(
@@ -278,18 +289,18 @@ export async function generateAiDayPlan(
         1,
         isJetLag ? "afternoon" : "morning",
         "flight",
-        selected.flight.name,
-        `${selected.flight.airline} • ${selected.flight.route}`,
-        isJetLag ? "12:30" : selected.flight.departureTime,
-        isJetLag ? "15:15" : selected.flight.arrivalTime,
-        selected.flight.locationLabel,
-        selected.flight.imageUrl,
-        selected.flight.deepLink,
+        primarySelection.flight.name,
+        `${primarySelection.flight.airline} â€¢ ${primarySelection.flight.route}`,
+        isJetLag ? "12:30" : primarySelection.flight.departureTime,
+        isJetLag ? "15:15" : primarySelection.flight.arrivalTime,
+        primarySelection.flight.locationLabel,
+        primarySelection.flight.imageUrl,
+        primarySelection.flight.deepLink,
       ),
     );
   }
 
-  if (selected.transport) {
+  if (primarySelection.transport) {
     pushItem(
       1,
       makeItem(
@@ -297,18 +308,18 @@ export async function generateAiDayPlan(
         1,
         isJetLag ? "evening" : "midday",
         "transport",
-        selected.transport.name,
-        `${selected.transport.transportType} arranged to reduce arrival friction.${isWalkingOverload || isElderlyFatigue ? " Lower walking transfer plan." : ""}`,
+        primarySelection.transport.name,
+        `${primarySelection.transport.transportType} arranged to reduce arrival friction.${isWalkingOverload || isElderlyFatigue ? " Lower walking transfer plan." : ""}`,
         isJetLag ? "16:00" : "12:45",
         isJetLag ? "16:45" : "13:30",
-        selected.transport.locationLabel,
-        selected.transport.imageUrl,
-        selected.transport.deepLink,
+        primarySelection.transport.locationLabel,
+        primarySelection.transport.imageUrl,
+        primarySelection.transport.deepLink,
       ),
     );
   }
 
-  if (selected.hotel) {
+  if (primarySelection.hotel) {
     pushItem(
       1,
       makeItem(
@@ -316,18 +327,18 @@ export async function generateAiDayPlan(
         1,
         isJetLag ? "evening" : "afternoon",
         "hotel",
-        `Check in • ${selected.hotel.name}`,
-        `${selected.hotel.area} • ${selected.hotel.amenities.slice(0, 2).join(" • ")}`,
+        `Check in â€¢ ${primarySelection.hotel.name}`,
+        `${primarySelection.hotel.area} â€¢ ${primarySelection.hotel.amenities.slice(0, 2).join(" â€¢ ")}`,
         isJetLag ? "17:15" : "14:30",
         isJetLag ? "18:00" : "15:30",
-        selected.hotel.area,
-        selected.hotel.imageUrl,
-        selected.hotel.deepLink,
+        primarySelection.hotel.area,
+        primarySelection.hotel.imageUrl,
+        primarySelection.hotel.deepLink,
       ),
     );
   }
 
-  if (selected.car) {
+  if (primarySelection.car) {
     pushItem(
       1,
       makeItem(
@@ -335,13 +346,13 @@ export async function generateAiDayPlan(
         1,
         "evening",
         "car",
-        `Pick up • ${selected.car.name}`,
-        `${selected.car.carType} • ${selected.car.transmission} • ${selected.car.seats} seats`,
+        `Pick up â€¢ ${primarySelection.car.name}`,
+        `${primarySelection.car.carType} â€¢ ${primarySelection.car.transmission} â€¢ ${primarySelection.car.seats} seats`,
         "17:00",
         "17:30",
-        selected.car.locationLabel,
-        selected.car.imageUrl,
-        selected.car.deepLink,
+        primarySelection.car.locationLabel,
+        primarySelection.car.imageUrl,
+        primarySelection.car.deepLink,
       ),
     );
   }
@@ -385,7 +396,7 @@ export async function generateAiDayPlan(
           timing.slot,
           "activity",
           activity.name,
-          `${activity.categoryLabel} • ${activity.duration} • ${activity.bestTimeOfDay}${isHeatStress ? " • Heat-safe timing" : ""}${isWalkingOverload ? " • Low walking plan" : ""}`,
+          `${activity.categoryLabel} â€¢ ${activity.duration} â€¢ ${activity.bestTimeOfDay}${isHeatStress ? " â€¢ Heat-safe timing" : ""}${isWalkingOverload ? " â€¢ Low walking plan" : ""}`,
           timing.start,
           timing.end,
           activity.locationLabel,
@@ -415,7 +426,7 @@ export async function generateAiDayPlan(
           /sunset|evening|night/i.test(`${gem.bestTime || ""} ${gem.title} ${gem.description}`) ? "evening" : "afternoon",
           "hidden_gem",
           gem.title,
-          `${gem.whyItFits || gem.aiReason}${gem.bestTime ? ` • Best ${gem.bestTime}` : ""}${gem.crowdNote ? ` • ${gem.crowdNote}` : ""}`,
+          `${gem.whyItFits || gem.aiReason}${gem.bestTime ? ` â€¢ Best ${gem.bestTime}` : ""}${gem.crowdNote ? ` â€¢ ${gem.crowdNote}` : ""}`,
           gemStart,
           gemEnd,
           gem.locationLabel || gem.destinationLabel,
@@ -441,7 +452,7 @@ export async function generateAiDayPlan(
         isKidFatigue ? "afternoon" : "evening",
         "restaurant",
         selected.restaurant.name,
-        `${selected.restaurant.cuisine} • ${selected.restaurant.mealWindow} • ${selected.restaurant.pricePerPerson} per person${fatigueSignals.size ? " • Rest window added" : ""}`,
+        `${selected.restaurant.cuisine} â€¢ ${selected.restaurant.mealWindow} â€¢ ${selected.restaurant.pricePerPerson} per person${fatigueSignals.size ? " â€¢ Rest window added" : ""}`,
         isKidFatigue ? "17:30" : "20:45",
         isKidFatigue ? "18:30" : "22:00",
         selected.restaurant.locationLabel,
@@ -452,27 +463,32 @@ export async function generateAiDayPlan(
   }
 
   destinations.slice(1).forEach((destination, index) => {
+    const destinationSelection = options?.selectedByDestination?.[destination.id] ?? null;
+    const segmentFlight = destinationSelection?.flight ?? null;
+    const segmentHotel = destinationSelection?.hotel ?? null;
     const transferDay = Math.min(totalDays, index + 2 + (isJetLag && index === 0 ? 1 : 0));
     if (lockedRestDaySet.has(transferDay)) return;
-    pushItem(
-      transferDay,
-      makeItem(
-        `segment-flight-${destination.id}`,
+    if (segmentFlight) {
+      pushItem(
         transferDay,
-        "morning",
-        "flight",
-        `Continue to ${destination.city}`,
-        `Inter-city transfer into ${destination.city}, ${destination.country}.`,
-        "09:00",
-        "10:30",
-        `${destination.city}, ${destination.country}`,
-        selected.flight?.imageUrl,
-        selected.flight?.deepLink ?? null,
-        selected.flight?.fare,
-        destination.id,
-        `${destination.city}, ${destination.country}`,
-      ),
-    );
+        makeItem(
+          `segment-flight-${destination.id}`,
+          transferDay,
+          "morning",
+          "flight",
+          segmentFlight.name,
+          `${segmentFlight.airline} • ${segmentFlight.route}`,
+          segmentFlight.departureTime || "09:00",
+          segmentFlight.arrivalTime || "10:30",
+          `${destination.city}, ${destination.country}`,
+          segmentFlight.imageUrl,
+          segmentFlight.deepLink ?? null,
+          segmentFlight.totalFare ?? segmentFlight.fare,
+          destination.id,
+          `${destination.city}, ${destination.country}`,
+        ),
+      );
+    }
 
     pushItem(
       transferDay,
@@ -482,24 +498,24 @@ export async function generateAiDayPlan(
         "afternoon",
         "hotel",
         destination.preferredHotel
-          ? `Check in • ${destination.preferredHotel}`
-          : `Check in • ${selected.hotel?.name || "Selected hotel"}`,
+          ? `Check in â€¢ ${destination.preferredHotel}`
+          : `Check in â€¢ ${segmentHotel?.name || selected.hotel?.name || "Selected hotel"}`,
         destination.preferredHotel
           ? `${destination.preferredHotel} in ${destination.city}`
-          : `${selected.hotel?.area || "Local stay"} • ${destination.city}`,
+          : `${segmentHotel?.area || selected.hotel?.area || "Local stay"} â€¢ ${destination.city}`,
         "14:00",
         "15:00",
         `${destination.city}, ${destination.country}`,
-        selected.hotel?.imageUrl,
-        selected.hotel?.deepLink ?? null,
-        selected.hotel?.nightlyPrice,
+        segmentHotel?.imageUrl || selected.hotel?.imageUrl,
+        segmentHotel?.deepLink ?? selected.hotel?.deepLink ?? null,
+        segmentHotel?.nightlyPrice ?? selected.hotel?.nightlyPrice,
         destination.id,
         `${destination.city}, ${destination.country}`,
       ),
     );
   });
 
-  if (selected.transport && totalDays > 1 && !lockedRestDaySet.has(totalDays)) {
+  if (lastSelection.transport && totalDays > 1 && !lockedRestDaySet.has(totalDays)) {
     pushItem(
       totalDays,
       makeItem(
@@ -507,18 +523,18 @@ export async function generateAiDayPlan(
         totalDays,
         "afternoon",
         "transport",
-        `${selected.transport.name} for departure`,
+        `${lastSelection.transport.name} for departure`,
         "Reserved to keep the final movement safe and on time.",
         "15:30",
         "16:15",
-        selected.transport.locationLabel,
-        selected.transport.imageUrl,
-        selected.transport.deepLink,
+        lastSelection.transport.locationLabel,
+        lastSelection.transport.imageUrl,
+        lastSelection.transport.deepLink,
       ),
     );
   }
 
-  if (selected.flight && totalDays > 1) {
+  if (lastSelection.flight && totalDays > 1) {
     pushItem(
       totalDays,
       makeItem(
@@ -526,13 +542,13 @@ export async function generateAiDayPlan(
         totalDays,
         "evening",
         "flight",
-        `Return • ${selected.flight.name}`,
+        `Return â€¢ ${lastSelection.flight.name}`,
         "Final-day departure block with protected transfer timing.",
         "18:30",
         "21:15",
-        selected.flight.locationLabel,
-        selected.flight.imageUrl,
-        selected.flight.deepLink,
+        lastSelection.flight.locationLabel,
+        lastSelection.flight.imageUrl,
+        lastSelection.flight.deepLink,
       ),
     );
   }
@@ -578,6 +594,10 @@ export async function generateAiDayPlan(
     };
   });
 
+  if (options?.includeCrowd === false) {
+    return stabilizedPlan;
+  }
+
   const crowdAwarePlan = await Promise.all(
     stabilizedPlan.map(async (day) => {
       const crowdAdjustedItems = await annotateDayPlanWithCrowd(day.items, day.date, inputs);
@@ -615,7 +635,7 @@ export async function generateAiDayPlan(
     }),
   );
 
-  return crowdAwarePlan;
+  return validateAndAdjustDayPlan(crowdAwarePlan).items;
 }
 
 export function buildAnalysisModules(selected: SelectedRecommendations, inputs: UserTripInput, dayPlan: DayPlan[]): AnalysisModule[] {
@@ -698,3 +718,5 @@ export function buildAnalysisInsights(selected: SelectedRecommendations, inputs:
     },
   ];
 }
+
+

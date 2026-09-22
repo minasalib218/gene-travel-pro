@@ -6,9 +6,23 @@ import {
   type ReadyPlanTimelineItem,
 } from "@/lib/ready-plan-content";
 
+const BOOK_NOW_LABEL = "Book Now";
+
+function isUrlLike(value: unknown) {
+  return typeof value === "string" && /^(https?:\/\/|www\.|\/api\/affiliate\/redirect)/i.test(value.trim());
+}
+
+function publicText(value: string | undefined, fallback = "") {
+  return isUrlLike(value) ? fallback : value;
+}
+
 export function sanitizeReadyPlanContentForPublic(content: ReadyPlanContent): ReadyPlanContent {
   return {
     ...content,
+    hero: {
+      ...content.hero,
+      primaryCtaHref: "/start-planning",
+    },
     days: content.days.map((day) => ({
       ...day,
       timelineItems: day.timelineItems.map((item): ReadyPlanTimelineItem => ({
@@ -17,11 +31,20 @@ export function sanitizeReadyPlanContentForPublic(content: ReadyPlanContent): Re
       })),
       suggestions: day.suggestions.map((suggestion): ReadyPlanSuggestion => ({
         ...suggestion,
+        matchReason: publicText(suggestion.matchReason, ""),
+        matchScore: publicText(suggestion.matchScore, "Recommended"),
+        duration: publicText(suggestion.duration, ""),
+        ctaText: publicText(suggestion.ctaText, BOOK_NOW_LABEL),
       })),
       story: {
         ...day.story,
+        musicUrl: undefined,
       },
     })),
+    footer: {
+      ...content.footer,
+      ctaHref: "/start-planning",
+    },
   };
 }
 

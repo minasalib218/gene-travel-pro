@@ -155,7 +155,7 @@ function PaymentSuccessPageContent() {
           expiresAt={result?.expiresAt}
           primaryAction={
             mode === "active"
-              ? { label: "Start My AI Plan", href: "/ai-planner" }
+              ? { label: "Start My AI Plan", href: "/start-planning" }
               : mode === "pending"
                 ? { label: "Go to Profile", href: "/profile" }
                 : undefined

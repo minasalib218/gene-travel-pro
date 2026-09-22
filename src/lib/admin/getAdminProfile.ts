@@ -1,4 +1,5 @@
-import { createRouteClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+
 export async function fetchAdminProfile(client: any, userId: string) {
   const { data, error } = await client
     .from("profiles")
@@ -12,8 +13,7 @@ export async function fetchAdminProfile(client: any, userId: string) {
 }
 
 export async function getSupabaseAdminProfile(userId: string) {
-  const supabase = createRouteClient();
-  return fetchAdminProfile(supabase, userId);
+  return fetchAdminProfile(supabaseAdmin, userId);
 }
 
 export function isAdminRole(role: unknown) {

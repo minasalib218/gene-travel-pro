@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { tableExists } from "@/lib/prisma-safe";
 import ReadyPlansList from "./ReadyPlansList";
 import type { ReadyPlanRecord } from "./ReadyPlansEditor";
+import { listLegacyReadyPlans } from "@/lib/ready-plan-legacy";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,7 @@ export default async function AdminReadyPlansPage() {
         currency: true,
         status: true,
         daysJson: true,
+        contentJson: true,
         updatedAt: true,
         ...(includeLinks
           ? {
@@ -37,8 +39,22 @@ export default async function AdminReadyPlansPage() {
       orderBy: { updatedAt: "desc" },
     })) as ReadyPlanRecord[];
   } catch (error: any) {
-    console.error("AdminReadyPlansPage database error:", error);
-    dbError = error?.message || "Unknown database error";
+    const isSchemaMismatch =
+      typeof error?.message === "string" &&
+      (error.message.includes("does not exist in the current database") ||
+        error.message.includes("The column `ready_plans."));
+
+    if (isSchemaMismatch) {
+      try {
+        plans = (await listLegacyReadyPlans()) as ReadyPlanRecord[];
+      } catch (legacyError: any) {
+        console.error("AdminReadyPlansPage legacy database error:", legacyError);
+        dbError = legacyError?.message || "Unknown database error";
+      }
+    } else {
+      console.error("AdminReadyPlansPage database error:", error);
+      dbError = error?.message || "Unknown database error";
+    }
   }
 
   return (

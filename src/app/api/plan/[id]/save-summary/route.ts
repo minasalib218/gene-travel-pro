@@ -14,7 +14,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const supabase = createRouteClient();
     const { data, error } = await supabase.auth.getUser();
     if (error) {
-      return NextResponse.json({ ok: false, code: "AUTH_ERROR", message: error.message }, { status: 401 });
+      return NextResponse.json({ ok: false, code: "AUTH_ERROR" }, { status: 401 });
     }
     if (!data?.user) {
       return NextResponse.json({ ok: false, code: "NOT_AUTHED" }, { status: 401 });
@@ -68,7 +68,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   } catch (e: any) {
     console.error("save-summary error:", e);
     return NextResponse.json(
-      { ok: false, code: "INTERNAL_ERROR", message: e?.message ?? "Unknown error" },
+      { ok: false, code: "INTERNAL_ERROR", message: "Unable to save this plan summary right now." },
       { status: 500 }
     );
   }

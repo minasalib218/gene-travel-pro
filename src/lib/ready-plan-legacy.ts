@@ -117,18 +117,15 @@ function toStatus(row: Record<string, unknown>): CompatibleReadyPlanRecord["stat
   return "DRAFT";
 }
 
-function sqlValue(value: unknown) {
-  if (value === null || value === undefined) return "NULL";
-  if (typeof value === "number") return Number.isFinite(value) ? String(value) : "NULL";
-  if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
-  if (value instanceof Date) return `'${value.toISOString().replace(/'/g, "''")}'`;
-  if (Array.isArray(value)) {
-    return `ARRAY[${value.map((item) => `'${String(item).replace(/'/g, "''")}'`).join(", ")}]::text[]`;
-  }
-  if (typeof value === "object") {
-    return `'${JSON.stringify(value).replace(/'/g, "''")}'::jsonb`;
-  }
-  return `'${String(value).replace(/'/g, "''")}'`;
+function sqlIdentifier(identifier: string) {
+  return Prisma.raw(`"${identifier.replace(/"/g, '""')}"`);
+}
+
+function sqlAssignments(entries: Array<[string, unknown]>) {
+  return Prisma.join(
+    entries.map(([key, value]) => Prisma.sql`${sqlIdentifier(key)} = ${value}`),
+    ", ",
+  );
 }
 
 export function mapLegacyReadyPlanRow(row: Record<string, unknown>): CompatibleReadyPlanRecord {
@@ -186,16 +183,16 @@ export async function listLegacyReadyPlans() {
           ? "created_at"
           : "id";
 
-  const rows = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
-    `SELECT * FROM "ready_plans" ORDER BY "${orderColumn}" DESC`,
+  const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>(
+    Prisma.sql`SELECT * FROM "ready_plans" ORDER BY ${sqlIdentifier(orderColumn)} DESC`,
   );
 
   return rows.map(mapLegacyReadyPlanRow);
 }
 
 export async function getLegacyReadyPlanById(id: string) {
-  const rows = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
-    `SELECT * FROM "ready_plans" WHERE "id" = '${id.replace(/'/g, "''")}' LIMIT 1`,
+  const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>(
+    Prisma.sql`SELECT * FROM "ready_plans" WHERE "id" = ${id} LIMIT 1`,
   );
 
   return rows[0] ? mapLegacyReadyPlanRow(rows[0]) : null;
@@ -262,10 +259,20 @@ export async function createLegacyReadyPlan(data: CompatibleReadyPlanWriteData) 
     columns.includes("tags") &&
     columns.includes("created_at")
   ) {
-    const rows = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `INSERT INTO "ready_plans" ("id","title","location","days","image_url","tags","created_at")
-       VALUES (${sqlValue(id)}, ${sqlValue(data.title)}, ${sqlValue(data.destination)}, ${sqlValue(data.daysCount)}, ${sqlValue(data.heroImage ?? data.coverImage ?? "")}, ${sqlValue(data.tags)}, ${sqlValue(new Date())})
-       RETURNING *`,
+    const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>(
+      Prisma.sql`
+        INSERT INTO "ready_plans" ("id","title","location","days","image_url","tags","created_at")
+        VALUES (
+          ${id},
+          ${data.title},
+          ${data.destination},
+          ${data.daysCount},
+          ${data.heroImage ?? data.coverImage ?? ""},
+          ${data.tags},
+          ${new Date()}
+        )
+        RETURNING *
+      `,
     );
 
     return rows[0] ? mapLegacyReadyPlanRow(rows[0]) : null;
@@ -277,11 +284,11 @@ export async function createLegacyReadyPlan(data: CompatibleReadyPlanWriteData) 
   console.error("LEGACY_READY_PLAN_CREATE_KEYS", Object.keys(mapped));
 
   const entries = Object.entries(mapped).filter(([, value]) => value !== undefined);
-  const columnsSql = entries.map(([key]) => `"${key}"`).join(", ");
-  const valuesSql = entries.map(([, value]) => sqlValue(value)).join(", ");
+  const columnsSql = Prisma.join(entries.map(([key]) => sqlIdentifier(key)), ", ");
+  const valuesSql = Prisma.join(entries.map(([, value]) => value), ", ");
 
-  const rows = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
-    `INSERT INTO "ready_plans" (${columnsSql}) VALUES (${valuesSql}) RETURNING *`,
+  const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>(
+    Prisma.sql`INSERT INTO "ready_plans" (${columnsSql}) VALUES (${valuesSql}) RETURNING *`,
   );
 
   return rows[0] ? mapLegacyReadyPlanRow(rows[0]) : null;
@@ -314,13 +321,13 @@ export async function updateLegacyReadyPlan(id: string, data: Partial<Compatible
   });
 
   const entries = Object.entries(mapped).filter(([, value]) => value !== undefined);
-  const setSql = entries.map(([key, value]) => `"${key}" = ${sqlValue(value)}`).join(", ");
-  if (!setSql) {
+  if (!entries.length) {
     return getLegacyReadyPlanById(id);
   }
+  const setSql = sqlAssignments(entries);
 
-  const rows = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
-    `UPDATE "ready_plans" SET ${setSql} WHERE "id" = '${id.replace(/'/g, "''")}' RETURNING *`,
+  const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>(
+    Prisma.sql`UPDATE "ready_plans" SET ${setSql} WHERE "id" = ${id} RETURNING *`,
   );
 
   return rows[0] ? mapLegacyReadyPlanRow(rows[0]) : null;

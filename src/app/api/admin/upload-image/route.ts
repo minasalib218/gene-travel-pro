@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin/requireAdmin";
 import { uploadAdminImage } from "@/lib/supabase/storage";
-import { adminImageBucketSchema } from "@/lib/content/shared";
+import { adminImageBucketSchema, imageUploadConstraintsLabel } from "@/lib/content/shared";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +26,12 @@ export async function POST(req: Request) {
       message === "INVALID_IMAGE_TYPE" || message === "IMAGE_TOO_LARGE"
         ? message
         : "UPLOAD_FAILED";
-    return NextResponse.json({ ok: false, code, message }, { status: 400 });
+    const friendlyMessage =
+      code === "INVALID_IMAGE_TYPE"
+        ? `Unsupported image format. Please upload ${imageUploadConstraintsLabel.allowedTypesText}.`
+        : code === "IMAGE_TOO_LARGE"
+          ? `Image is too large. Please keep it under ${imageUploadConstraintsLabel.maxSizeText}.`
+          : message;
+    return NextResponse.json({ ok: false, code, message: friendlyMessage }, { status: 400 });
   }
 }

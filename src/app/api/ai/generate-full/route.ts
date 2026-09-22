@@ -6,7 +6,7 @@ import { openai } from "@/lib/openai/server";
 import { aggregateProviderData } from "@/lib/providers/aggregate";
 import { isAdmin } from "@/lib/access/canUseAi";
 import { assertRateLimits } from "@/lib/credits/rateLimitService";
-import { consumeCredit, logAiUsage, refundConsumedCredit } from "@/lib/credits/creditService";
+import { completeCreditAction, consumeCredit, logAiUsage, refundConsumedCredit } from "@/lib/credits/creditService";
 import { Prisma } from "@prisma/client";
 import { ensureUserProfile } from "@/lib/profile/ensureUserProfile";
 import { recordUserActivity } from "@/lib/customer-activity";
@@ -337,9 +337,24 @@ ${JSON.stringify(prompt)}`,
         startDate: new Date(startDate),
         endDate: new Date(endDate),
         summaryJson,
+        planningStage: "TIMELINE_READY",
+        generations: {
+          create: {
+            userId,
+            idempotencyKey: generationRequestId,
+            status: "COMPLETED",
+            requestJson: inputs,
+            resultJson: summaryJson,
+            chargedAt: admin ? null : new Date(),
+            startedAt: new Date(),
+            completedAt: new Date(),
+          },
+        },
       },
       select: { id: true },
     });
+
+    await completeCreditAction(userId, generationRequestId);
 
     await recordUserActivity({
       userId,

@@ -9,6 +9,7 @@ import {
   recordConversionEvent,
 } from "@/lib/analytics-server";
 import { getAdminSetting } from "@/lib/admin/settings";
+import { ANALYTICS_EVENT_ALIASES, normalizeAnalyticsEventName, sanitizeAnalyticsMetadata } from "@/lib/analytics-events";
 
 export const dynamic = "force-dynamic";
 
@@ -79,7 +80,11 @@ export async function POST(req: NextRequest) {
 
     const supabase = createRouteClient();
     const { data } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
-    const metadata = body.metadata ?? {};
+    const canonicalEventName = normalizeAnalyticsEventName(body.eventName);
+    const metadata = sanitizeAnalyticsMetadata({
+      ...(body.metadata ?? {}),
+      ...(ANALYTICS_EVENT_ALIASES[body.eventName] ? { legacyEventName: body.eventName } : {}),
+    });
     const { country, city } = getAnalyticsLocation(req.headers);
     const { deviceType, browser, os } = parseUserAgent(req.headers.get("user-agent"));
     const source = readMetadataString(metadata, "utm_source", "utmSource", "source");
@@ -92,7 +97,7 @@ export async function POST(req: NextRequest) {
       userId: data?.user?.id ?? null,
       anonymousId,
       sessionId,
-      eventName: body.eventName,
+      eventName: canonicalEventName,
       eventCategory: body.category ?? null,
       pagePath: body.pagePath || req.nextUrl.searchParams.get("pagePath") || null,
       referrer: typeof metadata.referrer === "string" ? metadata.referrer : req.headers.get("referer"),
@@ -117,11 +122,21 @@ export async function POST(req: NextRequest) {
     const value = typeof metadata.value === "number" ? metadata.value : Number(metadata.value ?? 0);
     const currency = typeof metadata.currency === "string" ? metadata.currency : "USD";
 
-    if (["checkout_started", "payment_failed", "signup_completed", "ai_input_completed", "booking_button_clicked", "book_now_clicked"].includes(body.eventName)) {
+    if ([
+      "checkout_started",
+      "payment_failed",
+      "credit_purchase_started",
+      "credit_purchase_completed",
+      "credit_purchase_failed",
+      "account_created",
+      "user_signed_in",
+      "ai_planner_step_completed",
+      "booking_link_clicked",
+    ].includes(canonicalEventName)) {
       await recordConversionEvent({
         userId: data?.user?.id ?? null,
         sessionId,
-        conversionType: body.eventName,
+        conversionType: canonicalEventName,
         value: Number.isFinite(value) ? value : null,
         currency,
         source,

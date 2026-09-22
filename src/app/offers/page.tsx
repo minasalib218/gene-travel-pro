@@ -4,8 +4,16 @@ import CollectionShowcasePage from "@/components/home/CollectionShowcasePage";
 import { prisma } from "@/lib/db/client";
 import { parseOfferLiveRecord } from "@/lib/content/offers-live";
 import { withExistingTable } from "@/lib/prisma-safe";
+import { buildSeoMetadata } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
+
+export const metadata = buildSeoMetadata({
+  title: "Travel Offers",
+  description: "Discover published Gene travel offers with hidden affiliate booking links behind clean Book Now actions.",
+  path: "/offers",
+  image: "/images/customize-band.jpg",
+});
 
 export default async function OffersPage() {
   let cards: Array<{

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin/requireAdmin";
 import { getAdminSetting, getPlanConfigs, setAdminSetting } from "@/lib/admin/settings";
+import { hasSupabaseAdminKey } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
 
@@ -44,8 +45,8 @@ export async function GET() {
         analyticsSettings,
         envStatus: {
           openAi: Boolean(process.env.OPENAI_API_KEY),
-          supabase: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
-          payment: Boolean(process.env.PADDLE_API_KEY || process.env.LEMONSQUEEZY_API_KEY),
+          supabase: hasSupabaseAdminKey(),
+          payment: Boolean(process.env.LEMONSQUEEZY_API_KEY),
           resend: Boolean(process.env.RESEND_API_KEY),
           metaPixel: Boolean(process.env.NEXT_PUBLIC_META_PIXEL_ID),
           googleAnalytics: Boolean(process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID),

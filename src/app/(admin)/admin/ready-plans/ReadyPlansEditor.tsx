@@ -42,6 +42,7 @@ export type ReadyPlanRecord = {
   priceFrom?: number | null;
   currency: string;
   status: "DRAFT" | "PUBLISHED";
+  showOnHome?: boolean;
   daysJson: unknown;
   contentJson?: unknown;
   links: ReadyPlanLinkRecord[];

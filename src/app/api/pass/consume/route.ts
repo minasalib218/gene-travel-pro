@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 import { createRouteClient } from "@/lib/supabase/server";
 import { consumeCredit, CreditError, getCreditStatus } from "@/lib/credits/creditService";
 import { getPlanRules } from "@/lib/credits/planRules";
-import { isEnvAdminCookie } from "@/lib/admin/isEnvAdmin";
+import { isVerifiedAdmin } from "@/lib/admin/verified";
 
 export async function POST(req: Request) {
   let userId: string | null = null;
   try {
-    if (isEnvAdminCookie()) {
+    if (await isVerifiedAdmin()) {
       const rules = getPlanRules("agency");
       return NextResponse.json({
         ok: true,

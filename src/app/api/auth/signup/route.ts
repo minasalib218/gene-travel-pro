@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { prisma } from "@/lib/prisma";
+import { ensureUserProfile } from "@/lib/profile/ensureUserProfile";
+import { mergeGuestDataIntoUser, readGuestIdentityFromCookieHeader } from "@/lib/profile/guestMerge";
 
 function cleanPhone(phone: string) {
   return phone.replace(/\s+/g, "");
@@ -72,17 +74,11 @@ export async function POST(req: Request) {
     const userId = created.user.id;
 
     try {
-      await prisma.profile.upsert({
-        where: { id: userId },
-        update: {
-          email,
-          fullName,
-        },
-        create: {
-          id: userId,
-          email,
-          fullName,
-        },
+      await ensureUserProfile(created.user, "PROFILE_CREATED");
+      await mergeGuestDataIntoUser({
+        userId,
+        ...readGuestIdentityFromCookieHeader(req.headers.get("cookie")),
+        source: "signup",
       });
 
       await prisma.$transaction([

@@ -1,13 +1,17 @@
 import { NextResponse } from "next/server";
 import { createRouteClient } from "@/lib/supabase/server";
 import { getActivePassOrNull } from "@/lib/require-pass";
-import { isEnvAdminCookie } from "@/lib/admin/isEnvAdmin";
 import { getLockedFeatures, getPackageName, getPlanRules, normalizePlanType } from "@/lib/credits/planRules";
 import { isAdmin } from "@/lib/access/canUseAi";
+import { requireAdmin } from "@/lib/admin/requireAdmin";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET() {
   try {
-    if (isEnvAdminCookie()) {
+    const admin = await requireAdmin();
+    if (admin.ok) {
       return NextResponse.json(
         {
           ok: true,
@@ -90,8 +94,9 @@ export async function GET() {
       lockedFeatures: getLockedFeatures(normalizedPlanType),
     });
   } catch (e: any) {
+    console.error("pass status error:", e);
     return NextResponse.json(
-      { ok: false, code: "INTERNAL_ERROR", message: e?.message || "Unknown error" },
+      { ok: false, code: "INTERNAL_ERROR", message: "Unable to load pass status right now." },
       { status: 500 },
     );
   }

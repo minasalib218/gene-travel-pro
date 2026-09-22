@@ -28,7 +28,7 @@ export async function POST(
 
     if (error) {
       return NextResponse.json(
-        { ok: false, code: "AUTH_ERROR", message: error.message },
+        { ok: false, code: "AUTH_ERROR" },
         { status: 401 },
       );
     }
@@ -36,6 +36,8 @@ export async function POST(
     if (!data?.user) {
       return NextResponse.json({ ok: false, code: "NOT_AUTHED" }, { status: 401 });
     }
+
+    const userId = data.user.id;
 
     const body = (await req.json()) as { payload?: RecommendationPayload };
     const payload = body?.payload;
@@ -47,7 +49,7 @@ export async function POST(
     const planInput = await prisma.planInput.findFirst({
       where: {
         id: params.id,
-        userId: data.user.id,
+        userId,
       },
     });
 
@@ -58,7 +60,7 @@ export async function POST(
     const savedPlan = await prisma.$transaction(async (tx) => {
       const existingPlan = await tx.plan.findFirst({
         where: {
-          userId: data.user.id,
+          userId,
           summaryJson: {
             path: ["planInputId"],
             equals: params.id,
@@ -115,7 +117,7 @@ export async function POST(
           })
         : await tx.plan.create({
             data: {
-              userId: data.user.id,
+              userId,
               status: "CONFIRMED",
               title: planTitle,
               destination: planInput.destination,
@@ -180,7 +182,7 @@ export async function POST(
 
       const existingSavedItem = await tx.savedItem.findFirst({
         where: {
-          userId: data.user.id,
+          userId,
           kind: "PLAN",
           refId: plan.id,
         },
@@ -190,7 +192,7 @@ export async function POST(
       if (!existingSavedItem) {
         await tx.savedItem.create({
           data: {
-            userId: data.user.id,
+            userId,
             kind: "PLAN",
             refId: plan.id,
             meta: {
@@ -218,9 +220,9 @@ export async function POST(
       message: "Plan saved to customer profile.",
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to finalize summary.";
+    console.error("finalize summary route error:", error);
     return NextResponse.json(
-      { ok: false, code: "INTERNAL_ERROR", message },
+      { ok: false, code: "INTERNAL_ERROR", message: "Failed to finalize summary." },
       { status: 500 },
     );
   }

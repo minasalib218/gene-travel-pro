@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import AiSuiteFrame from "@/components/ai/AiSuiteFrame";
 import { buildCinematicStoryModeFromPayload } from "@/lib/story/cinematicStoryMode";
+import { buildRecommendationPayloadFromSavedPlan } from "@/lib/recommendation/persistedPayload";
+import { readRecommendationPayload, storeRecommendationPayload } from "@/lib/recommendation/payloadStorage";
 import { buildBookingStateFromPayload, refreshBookingTotals, updateBookingItemStatus } from "@/lib/recommendation/bookingState";
 import type { CinematicStoryMode, RecommendationPayload } from "@/lib/recommendation/types";
 import { trackAnalyticsEvent } from "@/lib/analytics";
@@ -74,62 +76,6 @@ function getCountries(payload: RecommendationPayload) {
     ? payload.inputs.destinations.map((item) => item.country)
     : [payload.inputs.destination];
   return Array.from(new Set(stops.filter(Boolean)));
-}
-
-function buildSummaryPayloadFromPlan(plan: any): RecommendationPayload | null {
-  const summaryJson = plan?.summaryJson as Record<string, any> | null;
-  if (summaryJson?.payload) return summaryJson.payload as RecommendationPayload;
-  if (!summaryJson || !summaryJson.dayPlan) return null;
-
-  const inputsJson = (plan?.inputsJson as Record<string, any> | null) ?? {};
-  const recommendationJson = (plan?.recommendationJson as Record<string, any> | null) ?? {};
-  const analysisJson = (plan?.analysisJson as Record<string, any> | null) ?? {};
-
-  return {
-    inputs: {
-      destination: summaryJson.destination || inputsJson.destination || plan.destination,
-      departureCity: inputsJson.departureCity || "",
-      startDate: typeof plan.startDate === "string" ? plan.startDate : new Date(plan.startDate).toISOString(),
-      endDate: typeof plan.endDate === "string" ? plan.endDate : new Date(plan.endDate).toISOString(),
-      budget: Number(inputsJson.budget ?? 0),
-      currency: String(inputsJson.currency ?? "USD"),
-      travelStyle: String(inputsJson.travelStyle ?? "balanced"),
-      travelersCount: Number(inputsJson.travelersCount ?? inputsJson.adults ?? 1),
-      travelerType: (inputsJson.travelerType ?? inputsJson.travelersType ?? "couple") as any,
-      hotelClass: String(inputsJson.hotelClass ?? "4 star"),
-      interests: Array.isArray(inputsJson.interests) ? inputsJson.interests : [],
-      preferredTransport: String(inputsJson.preferredTransport ?? "private"),
-      walkingTolerance: Number(inputsJson.walkingTolerance ?? 60),
-      specialRequests: String(inputsJson.specialRequests ?? ""),
-      destinations: Array.isArray(inputsJson.trip?.destinations) ? inputsJson.trip.destinations : [],
-      preferredHotels: Array.isArray(inputsJson.stay?.preferredHotels) ? inputsJson.stay.preferredHotels : [],
-      adults: Number(inputsJson.adults ?? 0),
-      kids: Number(inputsJson.kids ?? 0),
-      elderly: Number(inputsJson.elderly ?? 0),
-      fullInput: inputsJson,
-    },
-    groups: recommendationJson.groups ?? summaryJson.groups ?? {
-      hotels: [],
-      flights: [],
-      activities: [],
-      restaurants: [],
-      transports: [],
-      cars: [],
-      hiddenGems: [],
-    },
-    selected: recommendationJson.selected ?? summaryJson.selected,
-    selectedByDestination: recommendationJson.selectedByDestination ?? summaryJson.selectedByDestination ?? undefined,
-    dayPlan: summaryJson.dayPlan,
-    analysis: analysisJson.analysis ?? summaryJson.analysis ?? [],
-    modules: analysisJson.modules ?? summaryJson.modules ?? [],
-    createdAt: summaryJson.createdAt ?? new Date().toISOString(),
-    planId: summaryJson.planInputId,
-    mode: recommendationJson.mode ?? "ai",
-    aiSummary: recommendationJson.aiSummary ?? undefined,
-    summaryState: summaryJson.payload?.summaryState ?? summaryJson.summaryState ?? undefined,
-    livePricing: summaryJson.payload?.livePricing ?? undefined,
-    cinematicStory: summaryJson.payload?.cinematicStory ?? summaryJson.cinematicStory ?? undefined,
-  };
 }
 
 function SummaryMetric({
@@ -190,6 +136,7 @@ export default function SummaryClient() {
 
   const [payload, setPayload] = useState<RecommendationPayload | null>(null);
   const [savedPlanId, setSavedPlanId] = useState<string | null>(null);
+  const [savedPlanVersion, setSavedPlanVersion] = useState<number | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [loadingSavedPlan, setLoadingSavedPlan] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -207,28 +154,27 @@ export default function SummaryClient() {
   }, [planId]);
 
   useEffect(() => {
-    const raw = sessionStorage.getItem("gene-recommendation-payload");
-    if (!raw) return;
-    try {
-      setPayload(JSON.parse(raw));
-    } catch {
-      setPayload(null);
-    }
-  }, []);
+    if (planId) return;
+    const parsed = readRecommendationPayload(planId);
+    if (!parsed) return;
+    setPayload(parsed);
+  }, [planId]);
 
   useEffect(() => {
     async function loadSavedPlan() {
-      if (payload || !planId) return;
+      if (!planId) return;
       setLoadingSavedPlan(true);
       setErrorMessage(null);
       try {
         const res = await fetch(`/api/plan/${planId}`, { method: "GET" });
         const json = await res.json().catch(() => null);
         if (!res.ok || !json?.plan) throw new Error(json?.message || "This summary is not ready yet.");
-        const summaryPayload = buildSummaryPayloadFromPlan(json.plan);
+        const summaryPayload = buildRecommendationPayloadFromSavedPlan(json.plan);
         if (!summaryPayload) throw new Error("This saved plan does not have a complete summary payload yet.");
         setPayload(summaryPayload);
         setSavedPlanId(json.plan.id);
+        setSavedPlanVersion(Number(json.plan.version ?? 1));
+        storeRecommendationPayload(summaryPayload);
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : "This summary is not ready yet.");
       } finally {
@@ -236,7 +182,7 @@ export default function SummaryClient() {
       }
     }
     loadSavedPlan();
-  }, [payload, planId]);
+  }, [planId]);
 
   useEffect(() => {
     if (!payload) return;
@@ -262,7 +208,7 @@ export default function SummaryClient() {
 
   useEffect(() => {
     if (!payload) return;
-    sessionStorage.setItem("gene-recommendation-payload", JSON.stringify(payload));
+    storeRecommendationPayload(payload);
   }, [payload]);
 
   useEffect(() => {
@@ -275,11 +221,15 @@ export default function SummaryClient() {
     if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     syncTimeoutRef.current = setTimeout(async () => {
       try {
-        await fetch(`/api/plan/${savedPlanId}`, {
+        if (savedPlanVersion === null) return;
+        const response = await fetch(`/api/plan/${savedPlanId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ payload }),
+          body: JSON.stringify({ payload, expectedVersion: savedPlanVersion }),
         });
+        const result = await response.json().catch(() => null);
+        if (response.ok && Number.isInteger(result?.version)) setSavedPlanVersion(result.version);
+        if (response.status === 409) setErrorMessage("This trip was updated in another tab. Refresh to load the newest version.");
       } catch {
         // local state remains source of truth for the active session
       }
@@ -288,7 +238,7 @@ export default function SummaryClient() {
     return () => {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     };
-  }, [payload, savedPlanId]);
+  }, [payload, savedPlanId, savedPlanVersion]);
 
   useEffect(() => {
     async function saveToProfile() {
@@ -486,8 +436,8 @@ export default function SummaryClient() {
     }
     const apiBase = `/api/affiliate/redirect?planId=${encodeURIComponent(savedPlanId)}&itemKey=${encodeURIComponent(itemKey)}`;
     const res = await fetch(`${apiBase}&resolve=1`, { method: "GET" });
-    const json = (await res.json().catch(() => null)) as { ok?: boolean; url?: string; message?: string } | null;
-    if (!res.ok || !json?.ok || !json.url) {
+    const json = (await res.json().catch(() => null)) as { ok?: boolean; message?: string } | null;
+    if (!res.ok || !json?.ok) {
       setNotice(json?.message || "Booking link is not available yet. Please try another option.");
       return false;
     }
@@ -565,11 +515,11 @@ export default function SummaryClient() {
           </div>
         ) : null}
 
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <SummaryMetric icon={<CalendarDays size={18} />} label="Total Days" value={`${itineraryStats.totalDays}`} note={`${formatTripDate(payload.inputs.startDate)} - ${formatTripDate(payload.inputs.endDate)}`} />
-          <SummaryMetric icon={<Wallet size={18} />} label="Total Budget" value={formatCurrency(bookingState.totals.totalConfirmedCost, payload.inputs.currency)} note="Matches Booking summary" />
-          <SummaryMetric icon={<Sparkles size={18} />} label="Total Activities" value={`${bookingState.totals.totalActivities}`} note="Restaurants + events + trips" />
-          <SummaryMetric icon={<Globe2 size={18} />} label="Countries" value={`${countries.length}`} note={countries.join(", ")} />
+        <div className="flex gap-3 overflow-x-auto pb-2 [scrollbar-width:none] md:grid md:grid-cols-2 xl:grid-cols-4 xl:overflow-visible">
+          <div className="min-w-[220px] shrink-0 md:min-w-0"><SummaryMetric icon={<CalendarDays size={18} />} label="Total Days" value={`${itineraryStats.totalDays}`} note={`${formatTripDate(payload.inputs.startDate)} - ${formatTripDate(payload.inputs.endDate)}`} /></div>
+          <div className="min-w-[220px] shrink-0 md:min-w-0"><SummaryMetric icon={<Wallet size={18} />} label="Total Budget" value={formatCurrency(bookingState.totals.totalConfirmedCost, payload.inputs.currency)} note="Matches Booking summary" /></div>
+          <div className="min-w-[220px] shrink-0 md:min-w-0"><SummaryMetric icon={<Sparkles size={18} />} label="Total Activities" value={`${bookingState.totals.totalActivities}`} note="Restaurants + events + trips" /></div>
+          <div className="min-w-[220px] shrink-0 md:min-w-0"><SummaryMetric icon={<Globe2 size={18} />} label="Countries" value={`${countries.length}`} note={countries.join(", ")} /></div>
         </div>
 
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -587,7 +537,38 @@ export default function SummaryClient() {
                 </button>
               }
             >
-              <div className="grid gap-4 lg:grid-cols-[136px_minmax(0,1fr)]">
+              <div className="space-y-3 md:hidden">
+                {payload.dayPlan.map((day) => {
+                  const open = activeDay === day.day;
+                  return (
+                    <div key={`mobile-summary-day-${day.day}`} className="overflow-hidden rounded-[18px] border border-white/10 bg-black/18">
+                      <button
+                        type="button"
+                        onClick={() => setActiveDay(open ? 0 : day.day)}
+                        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                      >
+                        <div>
+                          <div className="text-[15px] font-medium text-white">Day {day.day}</div>
+                          <div className="mt-1 text-[12px] text-white/52">{formatDayLabel(day.date)}</div>
+                        </div>
+                        <ChevronRight size={14} className={`text-white/46 transition ${open ? "rotate-90 text-[#ffb36c]" : ""}`} />
+                      </button>
+                      {open ? (
+                        <div className="border-t border-white/8 px-4 py-3">
+                          {day.items.map((item) => (
+                            <div key={item.id} className="mb-2 rounded-[14px] border border-white/8 bg-black/20 px-3 py-3 last:mb-0">
+                              <div className="text-[14px] font-medium text-white">{item.title}</div>
+                              <div className="mt-1 text-[12px] text-white/56">{item.startTime} | {item.location || item.description}</div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="hidden gap-4 md:grid lg:grid-cols-[136px_minmax(0,1fr)]">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between gap-2">
                     <button
@@ -746,7 +727,7 @@ export default function SummaryClient() {
             ) : null}
 
             <SectionShell title="What's Included" icon={<ShieldCheck size={18} />}>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="flex gap-3 overflow-x-auto pb-2 [scrollbar-width:none] md:grid md:grid-cols-2 xl:grid-cols-4 xl:overflow-visible">
                 {includedItems.map((item) => (
                   <button
                     key={item.label}
@@ -756,7 +737,7 @@ export default function SummaryClient() {
                       expandedIncludedCategory === item.key
                         ? "border-[#ff7a00]/32 bg-[#ff7a00]/08 shadow-[0_16px_40px_rgba(255,122,0,0.08)]"
                         : "border-white/10 bg-black/18 hover:border-white/16"
-                    }`}
+                    } min-w-[220px] shrink-0 md:min-w-0`}
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3 text-[#ff9d4d]">
@@ -822,9 +803,10 @@ export default function SummaryClient() {
                         <button
                           type="button"
                           onClick={() => openAffiliate(item.key, true)}
+                          disabled={item.availabilityState === "unavailable"}
                           className="rounded-[12px] border border-[#ff7a00]/24 bg-[#ff7a00]/08 px-3 py-2 text-[12px] font-medium text-[#ffb36c]"
                         >
-                          Book Now
+                          {item.availabilityState === "unavailable" ? "Unavailable" : "Book Now"}
                         </button>
                       ) : null}
                       {savedPlanId ? (

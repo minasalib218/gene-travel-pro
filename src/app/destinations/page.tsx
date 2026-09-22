@@ -4,8 +4,16 @@ import CollectionShowcasePage from "@/components/home/CollectionShowcasePage";
 import { prisma } from "@/lib/db/client";
 import { destinationSections, getDestinationSectionLabel, parseDestinationRecord, type DestinationSectionValue, type DestinationTripStyleValue } from "@/lib/content/destinations";
 import { withExistingTable } from "@/lib/prisma-safe";
+import { buildSeoMetadata } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
+
+export const metadata = buildSeoMetadata({
+  title: "Travel Destinations",
+  description: "Explore Gene destinations by continent and travel style, with cinematic cards connected to published destination data.",
+  path: "/destinations",
+  image: "/bg/home-hero-bottom-optimized.jpg",
+});
 
 export default async function DestinationsPage() {
   let cards: Array<{

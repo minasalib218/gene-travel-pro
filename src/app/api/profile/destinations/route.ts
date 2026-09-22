@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db/client";
 import { tableExists } from "@/lib/prisma-safe";
 import { createRouteClient } from "@/lib/supabase/server";
 import { recordUserActivity } from "@/lib/customer-activity";
+import { ensureUserProfile } from "@/lib/profile/ensureUserProfile";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,7 @@ async function getUserId() {
   const supabase = createRouteClient();
   const { data, error } = await supabase.auth.getUser();
   if (error || !data?.user) return null;
+  await ensureUserProfile(data.user);
   return data.user.id;
 }
 

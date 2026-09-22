@@ -7,7 +7,13 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "test:security": "node --experimental-strip-types --experimental-specifier-resolution=node tests/security-guardrails.test.ts",
+    "test:travel-engine": "node --experimental-strip-types --experimental-specifier-resolution=node tests/travel-engine.test.ts",
+    "test:launch-critical": "node --experimental-strip-types --experimental-specifier-resolution=node tests/launch-critical.test.ts",
+    "test:control-centre": "node --experimental-strip-types --experimental-specifier-resolution=node tests/control-centre-rules.test.ts",
+    "test:all": "npm run test:security && npm run test:travel-engine && npm run test:launch-critical && npm run test:control-centre",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@prisma/client": "^6.16.3",
@@ -17,6 +23,7 @@
     "lucide-react": "^1.7.0",
     "next": "14.0.0",
     "openai": "^6.33.0",
+    "pg": "^8.22.0",
     "prisma": "^6.16.3",
     "react": "18.2.0",
     "react-dom": "18.2.0",
@@ -24,6 +31,7 @@
   },
   "devDependencies": {
     "@next/bundle-analyzer": "^16.1.6",
+    "@playwright/test": "^1.55.0",
     "@types/node": "^20.11.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",

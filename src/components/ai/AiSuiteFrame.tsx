@@ -16,6 +16,7 @@ type AiSuiteFrameProps = {
 type NavItem = {
   key: AiPageKey;
   label: string;
+  mobileLabel: string;
   href: string;
   icon: React.ReactNode;
 };
@@ -57,32 +58,37 @@ export default function AiSuiteFrame({ activePage, planId, children }: AiSuiteFr
       {
         key: "recommendation",
         label: "Recommendations",
+        mobileLabel: "Reco",
         href: withPlanId("/ai/recommendation", planId),
-        icon: <Sparkles size={16} />,
+        icon: <Sparkles size={14} />,
       },
       {
         key: "dayByDay",
         label: "Day by Day",
+        mobileLabel: "Days",
         href: withPlanId("/ai/day-by-day", planId),
-        icon: <CalendarRange size={16} />,
+        icon: <CalendarRange size={14} />,
       },
       {
         key: "analysis",
         label: "Analysis",
+        mobileLabel: "Analysis",
         href: withPlanId("/ai/analysis", planId),
-        icon: <BarChart3 size={16} />,
+        icon: <BarChart3 size={14} />,
       },
       {
         key: "booking",
         label: "Booking",
+        mobileLabel: "Booking",
         href: withPlanId("/ai/booking", planId),
-        icon: <CreditCard size={16} />,
+        icon: <CreditCard size={14} />,
       },
       {
         key: "summary",
         label: "Summary",
+        mobileLabel: "Summary",
         href: withPlanId("/summary", planId),
-        icon: <CheckCircle2 size={16} />,
+        icon: <CheckCircle2 size={14} />,
       },
     ],
     [planId],
@@ -91,7 +97,7 @@ export default function AiSuiteFrame({ activePage, planId, children }: AiSuiteFr
   return (
     <main className="relative min-h-screen overflow-hidden bg-black text-white">
 
-      <div className="relative mx-auto max-w-[1440px] px-3 py-2 md:px-4 lg:px-5">
+      <div className="relative mx-auto max-w-[1440px] px-3 py-2 pb-28 md:px-4 lg:px-5 xl:pb-2">
         <div className="grid gap-6 xl:grid-cols-[136px_minmax(0,1fr)]">
           <aside className="hidden xl:block">
             <div className="sticky top-2 flex min-h-[calc(100vh-16px)] flex-col overflow-hidden rounded-[30px] border border-white/10 bg-black px-2.5 py-3 shadow-[0_24px_70px_rgba(0,0,0,0.34)]">
@@ -159,19 +165,19 @@ export default function AiSuiteFrame({ activePage, planId, children }: AiSuiteFr
         </div>
       </div>
 
-      <nav className="fixed inset-x-4 bottom-4 z-40 flex items-center justify-between gap-2 rounded-[24px] border border-white/10 bg-black/55 p-2 shadow-[0_20px_60px_rgba(0,0,0,0.42)] backdrop-blur-2xl xl:hidden">
+      <nav className="fixed inset-x-2 bottom-2 z-40 flex items-center justify-between gap-1 rounded-[20px] border border-white/10 bg-black/78 p-1 shadow-[0_20px_60px_rgba(0,0,0,0.42)] backdrop-blur-2xl xl:hidden [padding-bottom:max(0.25rem,env(safe-area-inset-bottom))]">
         {navItems.map((item) => {
           const active = item.key === activePage;
           return (
             <Link
               key={item.key}
               href={item.href}
-              className={`flex min-w-0 flex-1 flex-col items-center gap-1 rounded-[18px] px-2 py-2 text-center transition ${
+              className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-[16px] px-1 py-1.5 text-center transition ${
                 active ? "bg-[#ff7a00]/14 text-[#ffd0a6]" : "text-white/58 hover:bg-white/8 hover:text-white"
               }`}
             >
-              {item.icon}
-              <span className="truncate text-[11px] uppercase tracking-[0.14em]">{item.label}</span>
+              <span className="flex h-5 w-5 items-center justify-center">{item.icon}</span>
+              <span className="truncate text-[8px] font-medium leading-3 tracking-[0.02em]">{item.mobileLabel}</span>
             </Link>
           );
         })}

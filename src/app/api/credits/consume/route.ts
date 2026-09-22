@@ -32,7 +32,7 @@ export async function POST(req: Request) {
     if (error instanceof CreditError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: 400 });
     }
-    const message = error instanceof Error ? error.message : "Failed to consume credit.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("credit consume error:", error);
+    return NextResponse.json({ error: "Failed to consume credit." }, { status: 500 });
   }
 }

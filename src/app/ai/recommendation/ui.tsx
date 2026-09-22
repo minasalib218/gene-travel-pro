@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -32,23 +32,49 @@ import AiSuiteFrame from "@/components/ai/AiSuiteFrame";
 import { buildAnalysisInsights, buildAnalysisModules, generateAiDayPlan, rankRecommendationsWithAI } from "@/lib/recommendation/aiPlanner";
 import { buildBudgetSettings } from "@/lib/recommendation/budget";
 import { enrichRecommendationPayloadWithLiveBooking } from "@/lib/recommendation/liveBooking";
-import { mockActivities, mockCars, mockFlights, mockHotels, mockRestaurants, mockTransports } from "@/lib/recommendation/mockData";
+import { storeRecommendationPayload } from "@/lib/recommendation/payloadStorage";
 import { buildDestinationResources } from "@/lib/recommendation/resources";
+import { buildTravelpayoutsFlightLegUrl } from "@/lib/providers/travelpayoutsFlights";
 import type {
   ActivityRecommendation,
+  CarRecommendation,
   FlightRecommendation,
   HiddenGemResult,
   HotelRecommendation,
   HotelUpgrade,
+  RestaurantRecommendation,
   RecommendationLabel,
   RecommendationPayload,
   SelectedRecommendations,
+  TransportRecommendation,
   TripDestination,
   UserTripInput,
 } from "@/lib/recommendation/types";
 import { trackAnalyticsEvent } from "@/lib/analytics";
 
-type SavedCard = { name?: string; location?: string; route?: string; category?: string; reason?: string };
+type SavedCard = { name?: string; location?: string; route?: string; category?: string; reason?: string; deepLink?: string | null };
+type RawProviderFlight = {
+  airline?: string;
+  routeLabel?: string;
+  price?: number;
+  currency?: string;
+  deepLink?: string | null;
+  baggageAllowanceLbs?: number;
+  overweightFee51To70?: number;
+  overweightFee71To99?: number;
+  normalizedItem?: Record<string, any>;
+};
+type RawProviderHotel = { name?: string; price?: number; currency?: string; location?: string; deepLink?: string | null; normalizedItem?: Record<string, any> };
+type RawProviderActivity = { name?: string; category?: string; price?: number; currency?: string; deepLink?: string | null; normalizedItem?: Record<string, any> };
+type RawAiPayload = {
+  fallback?: boolean;
+  providerData?: {
+    hotels?: RawProviderHotel[];
+    flights?: RawProviderFlight[];
+    activities?: RawProviderActivity[];
+    transports?: Array<Record<string, any>>;
+  } | null;
+} | null;
 type Props = {
   planId: string;
   planInput: any;
@@ -59,7 +85,7 @@ type Props = {
     flights: SavedCard[];
     activities: SavedCard[];
     fitBullets: string[];
-    rawAi?: { fallback?: boolean } | null;
+    rawAi?: RawAiPayload;
   };
   hiddenGems?: HiddenGemResult[];
 };
@@ -115,6 +141,75 @@ const EMPTY_SELECTED: SelectedRecommendations = {
 
 const money = (n: number, suffix = "") => `$${Math.round(n || 0).toLocaleString()}${suffix}`;
 const formatTripDate = (value: string) => new Date(value).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+
+function withDestinationPrefix(name: string, destinationCity: string) {
+  if (!name) return destinationCity;
+  return name.toLowerCase().includes(destinationCity.toLowerCase()) ? name : `${destinationCity} ${name}`;
+}
+
+function shiftClockTime(value: string, minutes: number) {
+  const [hourText = "12", minuteText = "00"] = value.split(":");
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  if (Number.isNaN(hour) || Number.isNaN(minute)) return value;
+  const total = ((hour * 60 + minute + minutes) % (24 * 60) + 24 * 60) % (24 * 60);
+  const nextHour = `${Math.floor(total / 60)}`.padStart(2, "0");
+  const nextMinute = `${total % 60}`.padStart(2, "0");
+  return `${nextHour}:${nextMinute}`;
+}
+
+function describeFlightLeg(
+  inputs: UserTripInput,
+  destinations: TripDestination[],
+  destinationIndex: number,
+  destination: TripDestination,
+) {
+  const rawTrip = ((inputs.fullInput as any)?.trip ?? {}) as Record<string, any>;
+  const previousStop = destinations[destinationIndex - 1];
+  const homeCity = rawTrip?.travellingFrom?.city || inputs.departureCity || "Home";
+  const homeCountry = rawTrip?.travellingFrom?.country || "";
+  const originCity = previousStop?.city || homeCity;
+  const originCountry = previousStop?.country || homeCountry;
+  const isReturnLeg = destinationIndex === destinations.length - 1 && destinations.length > 1;
+  const returnCity = homeCity;
+
+  return {
+    originCity,
+    originCountry,
+    returnCity,
+    isReturnLeg,
+    routeLabel:
+      destinationIndex === 0
+        ? `${originCity} -> ${destination.city}`
+        : `${originCity} -> ${destination.city}${isReturnLeg ? ` -> ${returnCity}` : ""}`,
+    departureDate: destination.startDate || inputs.startDate,
+    returnDate: isReturnLeg ? inputs.endDate : null,
+    deepLink: buildTravelpayoutsFlightLegUrl({
+      originAirport: destinationIndex === 0 ? rawTrip?.travellingFrom?.airport || rawTrip?.preferredAirport : undefined,
+      originCountry,
+      originCity,
+      destinationCountry: destination.country,
+      destinationCity: destination.city,
+      departDate: destination.startDate || inputs.startDate,
+      returnDate: isReturnLeg ? inputs.endDate : null,
+      adults: inputs.adults,
+      children: inputs.kids,
+      elderly: inputs.elderly,
+      cabinClass: inputs.cabinClass,
+      directFlightsOnly: inputs.directFlightsOnly,
+    }),
+  };
+}
+
+function inferItemFlowCategory(item: any): FlowCategory | "suggestions" {
+  if (!item || typeof item !== "object") return "suggestions";
+  if ("nightlyPrice" in item) return "stays";
+  if ("fare" in item || "totalFare" in item) return "flights";
+  if ("pricePerPerson" in item) return "restaurants";
+  if ("cost" in item || "dailyPrice" in item) return "transport";
+  if ("categoryLabel" in item) return "activities";
+  return "suggestions";
+}
 
 function calculateBagCost(weight: number) {
   if (weight <= 50) return 0;
@@ -244,6 +339,168 @@ function buildAiTip(itemName: string, label: RecommendationLabel, provider: stri
   if (label === "Luxury") return `Book ${itemName} earlier to secure premium inventory. ${provider} supply is limited at peak dates.`;
   if (label === "Cheap") return `Book ${itemName} in lower-demand windows for stronger savings.`;
   return `Book ${itemName} around 2-4 weeks ahead for better value. ${provider} data supports this range.`;
+}
+
+function normalizeProviderHotels(rawAi: RawAiPayload, inputs: UserTripInput, savedHotels: SavedCard[]) {
+  const providerHotels = rawAi?.providerData?.hotels;
+  if (!providerHotels?.length) return [];
+
+  return providerHotels
+    .filter((hotel) => typeof hotel?.deepLink === "string" && hotel.deepLink.trim() && hotel.deepLink !== "#")
+    .map((hotel, index): HotelRecommendation => {
+    const saved = savedHotels[index];
+    const nightlyPrice = Number(hotel.price ?? 0);
+    const normalized = hotel.normalizedItem || {};
+    return {
+      id: `provider-hotel-${index + 1}`,
+      name: saved?.name || hotel.name || `Hotel ${index + 1}`,
+      imageUrl: "/bg/ai-skyline.jpg",
+      provider: String(normalized.supplier || "provider"),
+      internalId: normalized.internal_id || null,
+      supplierItemId: normalized.supplier_item_id || null,
+      sourceBadge: String(normalized.supplier || "Provider"),
+      aiReason: saved?.reason || `Selected to fit ${inputs.travelStyle || "your"} trip profile.`,
+      confidenceScore: 86 - index * 3,
+      freshnessLabel: "Live provider fit",
+      fitTags: [],
+      locationLabel: saved?.location || hotel.location || inputs.destination,
+      deepLink: saved?.deepLink || hotel.deepLink || null,
+      sourceUrl: saved?.deepLink || hotel.deepLink || null,
+      affiliateUrl: null,
+      affiliateEligible: Boolean(normalized.affiliate_eligible),
+      availabilityState: normalized.affiliate_eligible ? "ready" : "unavailable",
+      lastValidatedAt: normalized.last_validated_at || null,
+      bookingReference: normalized.internal_id
+        ? {
+            supplier: normalized.supplier || null,
+            supplierItemId: normalized.supplier_item_id || null,
+            sourceUrl: normalized.source_url || null,
+            category: normalized.category || "hotel",
+            affiliateEligible: Boolean(normalized.affiliate_eligible),
+            internalId: normalized.internal_id,
+            lastValidatedAt: normalized.last_validated_at || null,
+          }
+        : undefined,
+      normalizedItem: normalized,
+      area: saved?.location || hotel.location || inputs.destination,
+      rating: 4.5,
+      reviewsLabel: "Provider matched",
+      nightlyPrice,
+      amenities: ["AI matched", "Provider-sourced", "Trip fit"],
+      upgrades: [],
+      selectedUpgrade: null,
+      totalPrice: nightlyPrice,
+      basePrice: nightlyPrice,
+    };
+    });
+}
+
+function normalizeProviderFlights(rawAi: RawAiPayload, inputs: UserTripInput, savedFlights: SavedCard[]) {
+  const providerFlights = rawAi?.providerData?.flights;
+  if (!providerFlights?.length) return [];
+
+  return providerFlights
+    .filter((flight) => typeof flight?.deepLink === "string" && flight.deepLink.trim() && flight.deepLink !== "#")
+    .map((flight, index): FlightRecommendation => {
+    const saved = savedFlights[index];
+    const fare = Number(flight.price ?? 0);
+    const normalized = flight.normalizedItem || {};
+    return {
+      id: `provider-flight-${index + 1}`,
+      name: saved?.name || flight.airline || `Flight ${index + 1}`,
+      imageUrl: "/bg/ai-skyline.jpg",
+      provider: String(normalized.supplier || "travelpayouts"),
+      internalId: normalized.internal_id || null,
+      supplierItemId: normalized.supplier_item_id || null,
+      sourceBadge: String(normalized.supplier || "Travelpayouts"),
+      aiReason: saved?.reason || `Matched to the requested route and ${inputs.travelStyle || "travel"} pacing.`,
+      confidenceScore: 84 - index * 3,
+      freshnessLabel: "Live route fit",
+      fitTags: [],
+      locationLabel: inputs.departureCity || inputs.destination,
+      deepLink: saved?.deepLink || flight.deepLink || null,
+      sourceUrl: saved?.deepLink || flight.deepLink || null,
+      affiliateUrl: null,
+      affiliateEligible: Boolean(normalized.affiliate_eligible),
+      availabilityState: normalized.affiliate_eligible ? "ready" : "unavailable",
+      lastValidatedAt: normalized.last_validated_at || null,
+      bookingReference: normalized.internal_id
+        ? {
+            supplier: normalized.supplier || null,
+            supplierItemId: normalized.supplier_item_id || null,
+            sourceUrl: normalized.source_url || null,
+            category: normalized.category || "flight",
+            affiliateEligible: Boolean(normalized.affiliate_eligible),
+            internalId: normalized.internal_id,
+            lastValidatedAt: normalized.last_validated_at || null,
+          }
+        : undefined,
+      normalizedItem: normalized,
+      airline: saved?.name || flight.airline || "Selected carrier",
+      departureTime: "09:30",
+      arrivalTime: "13:45",
+      duration: "4h 15m",
+      route: saved?.route || flight.routeLabel || `${inputs.departureCity} -> ${inputs.destination}`,
+      stops: 0,
+      fare,
+      totalFare: fare,
+      baggageAllowanceLbs: flight.baggageAllowanceLbs ?? 50,
+      totalPrice: fare,
+      basePrice: fare,
+    };
+    });
+}
+
+function normalizeProviderActivities(rawAi: RawAiPayload, inputs: UserTripInput, savedActivities: SavedCard[]) {
+  const providerActivities = rawAi?.providerData?.activities;
+  if (!providerActivities?.length) return [];
+
+  return providerActivities
+    .filter((activity) => typeof activity?.deepLink === "string" && activity.deepLink.trim() && activity.deepLink !== "#")
+    .map((activity, index): ActivityRecommendation => {
+    const saved = savedActivities[index];
+    const price = Number(activity.price ?? 0);
+    const normalized = activity.normalizedItem || {};
+    return {
+      id: `provider-activity-${index + 1}`,
+      name: saved?.name || activity.name || `Activity ${index + 1}`,
+      imageUrl: "/bg/ai-skyline.jpg",
+      provider: String(normalized.supplier || "provider"),
+      internalId: normalized.internal_id || null,
+      supplierItemId: normalized.supplier_item_id || null,
+      sourceBadge: String(normalized.supplier || "Provider"),
+      aiReason: saved?.reason || `Chosen to fit ${inputs.activityIntensity || "your"} activity rhythm.`,
+      confidenceScore: 82 - index * 2,
+      freshnessLabel: "Live experience fit",
+      fitTags: [],
+      locationLabel: inputs.destination,
+      deepLink: saved?.deepLink || activity.deepLink || null,
+      sourceUrl: saved?.deepLink || activity.deepLink || null,
+      affiliateUrl: null,
+      affiliateEligible: Boolean(normalized.affiliate_eligible),
+      availabilityState: normalized.affiliate_eligible ? "ready" : "unavailable",
+      lastValidatedAt: normalized.last_validated_at || null,
+      bookingReference: normalized.internal_id
+        ? {
+            supplier: normalized.supplier || null,
+            supplierItemId: normalized.supplier_item_id || null,
+            sourceUrl: normalized.source_url || null,
+            category: normalized.category || "activity",
+            affiliateEligible: Boolean(normalized.affiliate_eligible),
+            internalId: normalized.internal_id,
+            lastValidatedAt: normalized.last_validated_at || null,
+          }
+        : undefined,
+      normalizedItem: normalized,
+      duration: "2h 00m",
+      price,
+      categoryLabel: saved?.category || activity.category || "experience",
+      bestTimeOfDay: "Flexible",
+      weatherFit: "Balanced",
+      totalPrice: price,
+      basePrice: price,
+    };
+    });
 }
 
 function classifyRecommendationLabel(inputs: UserTripInput, itemTotal: number, qualitySignal: number, text: string): RecommendationLabel {
@@ -385,16 +642,13 @@ function toTripInput(planInput: any): UserTripInput {
 }
 
 function buildGroups(inputs: UserTripInput, recommendation: Props["recommendation"], hiddenGems: HiddenGemResult[] = []) {
-  const destinations = inputs.destinations?.length ? inputs.destinations : [{ id: "primary-destination", city: inputs.departureCity || inputs.destination, country: inputs.destination }];
+  const destinations = inputs.destinations?.length ? inputs.destinations : [{ id: "primary-destination", city: inputs.destination, country: inputs.destination }];
   const allowance = getCabinAllowance(inputs.cabinClass);
   const baggageWeight = Number(inputs.baggageWeight ?? 0);
   const baggageFee = inputs.budgetIncludesFlights && baggageWeight > 0 ? calculateBagCost(baggageWeight) : 0;
-  const attachDestination = <T extends { id: string }>(items: T[]) =>
-    items.map((item, index) => ({
-      ...item,
-      destinationId: destinations[Math.min(index, destinations.length - 1)]?.id,
-      destinationLabel: `${destinations[Math.min(index, destinations.length - 1)]?.city}, ${destinations[Math.min(index, destinations.length - 1)]?.country}`,
-    }));
+  const providerHotels = normalizeProviderHotels(recommendation.rawAi ?? null, inputs, recommendation.hotels);
+  const providerFlights = normalizeProviderFlights(recommendation.rawAi ?? null, inputs, recommendation.flights);
+  const providerActivities = normalizeProviderActivities(recommendation.rawAi ?? null, inputs, recommendation.activities);
 
   const decorate = <T extends { confidenceScore: number; provider: string; name: string }>(item: T, price: number, category: string) => {
     const aiLabel = classifyRecommendationLabel(inputs, price, item.confidenceScore, `${category} ${item.name}`);
@@ -415,39 +669,173 @@ function buildGroups(inputs: UserTripInput, recommendation: Props["recommendatio
     };
   };
 
+  const mapToDestinations = <T extends { id: string }>(
+    items: T[],
+    countPerDestination: number,
+    transform: (item: T, destination: TripDestination, destinationIndex: number, itemIndex: number) => T,
+  ) =>
+    destinations.flatMap((destination, destinationIndex) =>
+      items.slice(0, countPerDestination).map((item, itemIndex) => transform(item, destination, destinationIndex, itemIndex)),
+    );
+
+  const hotelSeeds = rankRecommendationsWithAI("hotel", inputs, providerHotels).slice(0, 3);
+  const flightSeeds = rankRecommendationsWithAI("flight", inputs, providerFlights).slice(0, 3);
+  const activitySeeds = rankRecommendationsWithAI("activity", inputs, providerActivities).slice(0, 4);
+  const restaurantSeeds: RestaurantRecommendation[] = [];
+  const transportSeeds: TransportRecommendation[] = [];
+  const carSeeds: CarRecommendation[] = [];
+
   return {
-    hotels: attachDestination(
-      rankRecommendationsWithAI("hotel", inputs, mockHotels).slice(0, Math.max(4, destinations.length * 2)).map((item, i) =>
-        decorate({ ...item, name: recommendation.hotels?.[i]?.name || item.name, locationLabel: recommendation.hotels?.[i]?.location || item.locationLabel, aiReason: recommendation.hotels?.[i]?.reason || item.aiReason, upgrades: buildHotelUpgrades(item), selectedUpgrade: null }, item.nightlyPrice, "hotel"),
-      ),
-    ),
+    hotels: mapToDestinations(hotelSeeds, 2, (item, destination, destinationIndex, itemIndex) => {
+      const nightlyPrice = Math.round((item.nightlyPrice || item.totalPrice || 0) * (1 + destinationIndex * 0.04 + itemIndex * 0.03));
+      const destinationName = `${destination.city}, ${destination.country}`;
+      return decorate(
+        {
+          ...item,
+          id: `${item.id}-${destination.id}-${itemIndex + 1}`,
+          name: withDestinationPrefix(recommendation.hotels?.[itemIndex]?.name || item.name, destination.city),
+          locationLabel: recommendation.hotels?.[itemIndex]?.location || `${destination.city} central district`,
+          destinationId: destination.id,
+          destinationLabel: destinationName,
+          area: destination.city,
+          aiReason: recommendation.hotels?.[itemIndex]?.reason || `${item.aiReason} Optimized for ${destinationName}.`,
+          nightlyPrice,
+          totalPrice: nightlyPrice,
+          upgrades: buildHotelUpgrades({ ...item, nightlyPrice } as HotelRecommendation),
+          selectedUpgrade: null,
+        },
+        nightlyPrice,
+        "hotel",
+      );
+    }),
     flights: inputs.budgetIncludesFlights
-      ? attachDestination(
-          rankRecommendationsWithAI("flight", inputs, mockFlights).slice(0, Math.max(4, destinations.length * 2)).map((item, i) =>
-            decorate(
-              {
-                ...item,
-                name: recommendation.flights?.[i]?.name || item.name,
-                route: recommendation.flights?.[i]?.route || item.route,
-                aiReason: recommendation.flights?.[i]?.reason || item.aiReason,
-                baggageAllowanceLbs: allowance,
-                declaredBaggageWeightLbs: baggageWeight,
-                baggageFee,
-                baggageExtraPrice: baggageFee,
-                totalFare: item.fare + baggageFee,
-                baggageInfo: buildBaggageInfo(baggageWeight, allowance, baggageFee),
-              },
-              item.fare + baggageFee,
-              "flight",
-            ),
-          ),
-        )
+      ? mapToDestinations(flightSeeds, 2, (item, destination, destinationIndex, itemIndex) => {
+          const leg = describeFlightLeg(inputs, destinations, destinationIndex, destination);
+          const fare = Math.round((item.fare || item.totalFare || item.totalPrice || 0) * (1 + destinationIndex * 0.06 + itemIndex * 0.04));
+          const shiftedDeparture = shiftClockTime(item.departureTime || "09:30", destinationIndex * 55 + itemIndex * 35);
+          const shiftedArrival = shiftClockTime(item.arrivalTime || "13:45", destinationIndex * 55 + itemIndex * 35);
+          return decorate(
+            {
+              ...item,
+              id: `${item.id}-${destination.id}-${itemIndex + 1}`,
+              name: `${item.airline} • ${leg.originCity} to ${destination.city}`,
+              route: recommendation.flights?.[itemIndex]?.route || leg.routeLabel,
+              locationLabel: `${destination.city} arrival`,
+              destinationId: destination.id,
+              destinationLabel: `${destination.city}, ${destination.country}`,
+              aiReason:
+                recommendation.flights?.[itemIndex]?.reason ||
+                `${item.aiReason} Tuned for the ${leg.originCity} to ${destination.city} leg.`,
+              deepLink: leg.deepLink || recommendation.flights?.[itemIndex]?.deepLink || item.deepLink || null,
+              departureTime: shiftedDeparture,
+              arrivalTime: shiftedArrival,
+              fare,
+              baggageAllowanceLbs: allowance,
+              declaredBaggageWeightLbs: baggageWeight,
+              baggageFee,
+              baggageExtraPrice: baggageFee,
+              totalFare: fare + baggageFee,
+              totalPrice: fare + baggageFee,
+              baggageInfo: buildBaggageInfo(baggageWeight, allowance, baggageFee),
+            },
+            fare + baggageFee,
+            "flight",
+          );
+        })
       : [],
-    activities: attachDestination(rankRecommendationsWithAI("activity", inputs, mockActivities).slice(0, Math.max(8, destinations.length * 4)).map((item, i) => decorate({ ...item, name: recommendation.activities?.[i]?.name || item.name, categoryLabel: recommendation.activities?.[i]?.category || item.categoryLabel, aiReason: recommendation.activities?.[i]?.reason || item.aiReason }, item.price, "activity"))),
-    restaurants: attachDestination(rankRecommendationsWithAI("restaurant", inputs, mockRestaurants).slice(0, Math.max(6, destinations.length * 3)).map((item) => decorate(item, item.pricePerPerson, "restaurant"))),
-    transports: attachDestination(rankRecommendationsWithAI("transport", inputs, mockTransports).slice(0, Math.max(4, destinations.length * 2)).map((item) => decorate(item, item.cost, "transport"))),
-    cars: attachDestination(rankRecommendationsWithAI("car", inputs, mockCars).slice(0, Math.max(4, destinations.length * 2)).map((item) => decorate(item, item.dailyPrice, "car"))),
-    hiddenGems: attachDestination(hiddenGems.map((item) => ({ ...item, name: item.title, aiTip: item.aiTip || (item.bestTime ? `Best time ${item.bestTime}.` : ""), fitTags: [...buildPersonalityTags(inputs, `${item.title} ${item.description}`), ...buildEnergyTags(inputs, `${item.title} ${item.description}`), ...(item.tags || item.fitTags || [])].slice(0, 4) }))),
+    activities: mapToDestinations(activitySeeds, 3, (item, destination, destinationIndex, itemIndex) => {
+      const price = Math.round((item.price || item.totalPrice || 0) * (1 + destinationIndex * 0.05 + itemIndex * 0.02));
+      return decorate(
+        {
+          ...item,
+          id: `${item.id}-${destination.id}-${itemIndex + 1}`,
+          name: withDestinationPrefix(recommendation.activities?.[itemIndex]?.name || item.name, destination.city),
+          categoryLabel: recommendation.activities?.[itemIndex]?.category || item.categoryLabel,
+          destinationId: destination.id,
+          destinationLabel: `${destination.city}, ${destination.country}`,
+          locationLabel: destination.city,
+          aiReason:
+            recommendation.activities?.[itemIndex]?.reason ||
+            `${item.aiReason} Re-ranked for ${destination.city}.`,
+          price,
+          totalPrice: price,
+        },
+        price,
+        "activity",
+      );
+    }),
+    restaurants: mapToDestinations(restaurantSeeds, 2, (item, destination, destinationIndex, itemIndex) => {
+      const pricePerPerson = Math.round((item.pricePerPerson || item.totalPrice || 0) * (1 + destinationIndex * 0.04 + itemIndex * 0.03));
+      return decorate(
+        {
+          ...item,
+          id: `${item.id}-${destination.id}-${itemIndex + 1}`,
+          name: withDestinationPrefix(item.name, destination.city),
+          destinationId: destination.id,
+          destinationLabel: `${destination.city}, ${destination.country}`,
+          locationLabel: destination.city,
+          aiReason: `${item.aiReason} Matched to ${destination.city}'s dining flow.`,
+          pricePerPerson,
+          totalPrice: pricePerPerson,
+        },
+        pricePerPerson,
+        "restaurant",
+      );
+    }),
+    transports: mapToDestinations(transportSeeds, 1, (item, destination, destinationIndex) => {
+      const cost = Math.round((item.cost || item.totalPrice || 0) * (1 + destinationIndex * 0.03));
+      return decorate(
+        {
+          ...item,
+          id: `${item.id}-${destination.id}`,
+          name: `${destination.city} ${item.name}`,
+          destinationId: destination.id,
+          destinationLabel: `${destination.city}, ${destination.country}`,
+          locationLabel: destination.city,
+          aiReason: `${item.aiReason} Best for local transfers in ${destination.city}.`,
+          cost,
+          totalPrice: cost,
+        },
+        cost,
+        "transport",
+      );
+    }),
+    cars: mapToDestinations(carSeeds, 1, (item, destination, destinationIndex) => {
+      const dailyPrice = Math.round((item.dailyPrice || item.totalPrice || 0) * (1 + destinationIndex * 0.03));
+      return decorate(
+        {
+          ...item,
+          id: `${item.id}-${destination.id}`,
+          name: `${destination.city} ${item.name}`,
+          destinationId: destination.id,
+          destinationLabel: `${destination.city}, ${destination.country}`,
+          locationLabel: destination.city,
+          aiReason: `${item.aiReason} Best for flexible movement around ${destination.city}.`,
+          dailyPrice,
+          totalPrice: dailyPrice,
+        },
+        dailyPrice,
+        "car",
+      );
+    }),
+    hiddenGems: hiddenGems
+      .filter((item) => {
+        const bookingUrl = item.affiliateUrl || item.deepLink || item.sourceUrl;
+        return typeof bookingUrl === "string" && bookingUrl.trim() && bookingUrl !== "#";
+      })
+      .map((item, index) => {
+      const destination = destinations.find((entry) => entry.id === item.destinationId) || destinations[index % destinations.length];
+      return {
+        ...item,
+        id: `${item.id}-${destination?.id || "primary"}`,
+        destinationId: destination?.id,
+        destinationLabel: destination ? `${destination.city}, ${destination.country}` : item.destination,
+        locationLabel: destination?.city || item.city || item.destination,
+        name: item.title,
+        aiTip: item.aiTip || (item.bestTime ? `Best time ${item.bestTime}.` : ""),
+        fitTags: [...buildPersonalityTags(inputs, `${item.title} ${item.description}`), ...buildEnergyTags(inputs, `${item.title} ${item.description}`), ...(item.tags || item.fitTags || [])].slice(0, 4),
+      };
+      }),
   };
 }
 
@@ -480,15 +868,150 @@ function TopMetricCard({
 }) {
   return (
     <div className={`rounded-[22px] border px-4 py-3 ${highlight ? "border-[#ff7a00]/28 bg-[linear-gradient(180deg,rgba(255,122,0,0.14),rgba(0,0,0,0.16))]" : "border-white/10 bg-black"} ${className}`}>
-      <div className="flex min-h-[68px] items-start gap-3">
+      <div className="flex min-h-[76px] items-start gap-3">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#ff7a00]/20 bg-[#ff7a00]/08 text-[#ffb256] shadow-[0_0_18px_rgba(255,122,0,0.08)]">{icon}</span>
         <div className="min-w-0">
           <div className="text-[12px] text-white/46">{label}</div>
-          <div className="mt-1 text-[17px] font-semibold text-white">{value}</div>
-          <div className="mt-1 text-[12px] leading-5 text-white/58">{note}</div>
+          <div className="mt-1 text-[18px] font-semibold text-white">{value}</div>
+          <div className="mt-1 line-clamp-2 text-[12px] leading-5 text-white/58">{note}</div>
         </div>
       </div>
     </div>
+  );
+}
+
+function TopPickSpotlightCard({
+  title,
+  subtitle,
+  imageUrl,
+  badges = [],
+  price,
+  priceDetail,
+  meta = [],
+  active,
+  onSelect,
+  onUpgrade,
+  upgradeLabel,
+}: {
+  title: string;
+  subtitle: string;
+  imageUrl?: string;
+  badges?: { label: string; tone?: string }[];
+  price: string;
+  priceDetail?: string;
+  meta?: string[];
+  active?: boolean;
+  onSelect: () => void;
+  onUpgrade?: () => void;
+  upgradeLabel?: string;
+}) {
+  return (
+    <article className={`group min-w-[270px] max-w-[270px] overflow-hidden rounded-[22px] border bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(0,0,0,0.72))] transition duration-300 md:min-w-0 md:max-w-none ${active ? "border-[#ff7a00]/55 shadow-[0_0_34px_rgba(255,122,0,0.18)]" : "border-white/10 hover:border-white/18"}`}>
+      <div className="relative h-[190px] overflow-hidden">
+        <img src={imageUrl || "/recommendation-bg.jpg"} alt={title} className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.08),rgba(0,0,0,0.18)_45%,rgba(0,0,0,0.72)_100%)]" />
+        <div className="absolute inset-x-4 top-4 flex flex-wrap gap-2">
+          {badges.slice(0, 3).map((badge) => (
+            <span key={`${title}-${badge.label}`} className={`rounded-full px-2.5 py-1 text-[10px] font-medium ${badge.tone || badgeToneClasses(badge.label)}`}>
+              {badge.label}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-4 p-4">
+        <div>
+          <h3 className="text-[18px] font-semibold leading-6 text-white">{title}</h3>
+          <p className="mt-1 line-clamp-2 text-[13px] leading-5 text-white/62">{subtitle}</p>
+        </div>
+
+        <div className="flex items-center gap-3 overflow-x-auto pb-1 text-[11px] text-white/66 [scrollbar-width:none]">
+          {meta.filter(Boolean).slice(0, 4).map((item) => (
+            <span key={`${title}-${item}`} className="inline-flex shrink-0 items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1">
+              <Star size={11} className="text-[#ff9d4d]" />
+              {item}
+            </span>
+          ))}
+        </div>
+
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.18em] text-white/38">Starting From</div>
+            <div className="mt-1 text-[22px] font-semibold text-white">{price}</div>
+            <div className="mt-1 min-h-[18px] text-[11px] text-white/52">{priceDetail || "\u00A0"}</div>
+            {upgradeLabel ? <div className="text-[11px] text-[#ffb15b]">{upgradeLabel}</div> : null}
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            {onUpgrade ? (
+              <button
+                type="button"
+                onClick={onUpgrade}
+                className="rounded-[12px] border border-[#ff7a00]/45 px-4 py-2 text-[12px] font-medium text-[#ffae57] transition hover:bg-[#ff7a00]/10"
+              >
+                Upgrade
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={onSelect}
+              className={`rounded-[12px] border px-4 py-2 text-[13px] font-medium transition ${active ? "border-[#ff7a00] bg-[#ff7a00] text-black shadow-[0_0_16px_rgba(255,122,0,0.2)]" : "border-[#ff7a00]/52 bg-transparent text-[#ffae57] hover:bg-[#ff7a00]/10 hover:shadow-[0_0_14px_rgba(255,122,0,0.12)]"}`}
+            >
+              {active ? "Selected" : "Add Pick"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function SmartSuggestionShowcaseCard({
+  title,
+  subtitle,
+  imageUrl,
+  description,
+  price,
+  labels = [],
+  onAdd,
+}: {
+  title: string;
+  subtitle: string;
+  imageUrl?: string;
+  description: string;
+  price: string;
+  labels?: { label: string; tone?: string }[];
+  onAdd: () => void;
+}) {
+  return (
+    <article className="min-w-[280px] shrink-0 overflow-hidden rounded-[22px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(0,0,0,0.7))] transition hover:border-[#ff7a00]/35 md:min-w-0">
+      <div className="relative h-[190px] overflow-hidden">
+        <img src={imageUrl || "/recommendation-bg.jpg"} alt={title} className="h-full w-full object-cover" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.06),rgba(0,0,0,0.16)_45%,rgba(0,0,0,0.5)_100%)]" />
+        <div className="absolute inset-x-4 top-4 flex flex-wrap gap-2">
+          {labels.slice(0, 3).map((label) => (
+            <span key={`${title}-${label.label}`} className={`rounded-full px-2.5 py-1 text-[10px] font-medium ${label.tone || badgeToneClasses(label.label)}`}>
+              {label.label}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-3 p-4">
+        <div>
+          <h3 className="text-[18px] font-semibold leading-6 text-white">{title}</h3>
+          <div className="mt-1 text-[13px] text-white/56">{subtitle}</div>
+        </div>
+        <div className="rounded-[16px] border border-white/10 bg-black/28 p-3">
+          <p className="line-clamp-2 text-[13px] leading-5 text-white/68">{description}</p>
+        </div>
+        <div className="flex items-end justify-between gap-3">
+          <div className="text-[15px] font-medium text-white">{price}</div>
+          <button type="button" onClick={onAdd} className="rounded-[12px] border border-[#ff7a00]/52 px-4 py-2 text-[13px] font-medium text-[#ffae57] transition hover:bg-[#ff7a00]/10 hover:shadow-[0_0_14px_rgba(255,122,0,0.12)]">
+            Add
+          </button>
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -626,6 +1149,7 @@ function ConfirmationModal({
 
 export default function RecommendationWorkspace({ planId, planInput, recommendation, hiddenGems = [] }: Props) {
   const router = useRouter();
+  const planGenerationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputs = useMemo(() => toTripInput(planInput), [planInput]);
   const groups = useMemo(() => buildGroups(inputs, recommendation, hiddenGems), [hiddenGems, inputs, recommendation]);
   const destinations = useMemo(
@@ -724,13 +1248,37 @@ export default function RecommendationWorkspace({ planId, planInput, recommendat
 
   useEffect(() => {
     let cancelled = false;
-    generateAiDayPlan(selected, inputs, { activityDays, itemDayOverrides, hiddenItemIds: removedItemIds }).then((plan) => {
-      if (!cancelled) setEditableDayPlan(plan);
-    });
+    async function buildPlan() {
+      const sharedOptions = {
+        activityDays,
+        itemDayOverrides,
+        hiddenItemIds: removedItemIds,
+      };
+
+      const fastPlan = await generateAiDayPlan(selected, inputs, {
+        ...sharedOptions,
+        selectedByDestination,
+        includeCrowd: false,
+      });
+      if (cancelled) return;
+      setEditableDayPlan(fastPlan);
+    }
+
+    if (planGenerationTimeoutRef.current) {
+      clearTimeout(planGenerationTimeoutRef.current);
+    }
+
+    planGenerationTimeoutRef.current = setTimeout(() => {
+      void buildPlan();
+    }, 120);
+
     return () => {
       cancelled = true;
+      if (planGenerationTimeoutRef.current) {
+        clearTimeout(planGenerationTimeoutRef.current);
+      }
     };
-  }, [activityDays, inputs, itemDayOverrides, removedItemIds, selected]);
+  }, [activityDays, inputs, itemDayOverrides, removedItemIds, selected, selectedByDestination]);
 
   const modules = useMemo(() => buildAnalysisModules(selected, inputs, editableDayPlan), [editableDayPlan, inputs, selected]);
   const analysis = useMemo(() => buildAnalysisInsights(selected, inputs, editableDayPlan), [editableDayPlan, inputs, selected]);
@@ -753,10 +1301,17 @@ export default function RecommendationWorkspace({ planId, planInput, recommendat
     [analysis, destinations, editableDayPlan, groups, inputs, modules, planId, recommendation.rawAi?.fallback, recommendation.summary, selected, selectedByDestination],
   );
   const sessionPayload = useMemo(() => ({ ...payload, extraSelections, activeDestinationTab, selectedTripStyle }), [activeDestinationTab, extraSelections, payload, selectedTripStyle]);
+  const persistSessionPayload = useCallback(() => {
+    storeRecommendationPayload(sessionPayload);
+  }, [sessionPayload]);
 
   useEffect(() => {
-    sessionStorage.setItem("gene-recommendation-payload", JSON.stringify(sessionPayload));
-  }, [sessionPayload]);
+    const timeout = window.setTimeout(() => {
+      persistSessionPayload();
+    }, 180);
+
+    return () => window.clearTimeout(timeout);
+  }, [persistSessionPayload]);
 
   function updateStopSelection(stopId: string, updater: (current: SelectedRecommendations) => SelectedRecommendations) {
     setSelectedByDestination((current) => ({
@@ -915,32 +1470,8 @@ export default function RecommendationWorkspace({ planId, planInput, recommendat
       planId,
       source: "recommendation_page",
     });
-    const incompleteStop = perStopSections.find((stop) => {
-      const current = selectedByDestination[stop.id] || EMPTY_SELECTED;
-      return !current.hotel && !current.flight && !current.transport && !current.car && !current.activities.length && !current.hiddenGems.length && !current.restaurant;
-    });
-    if (incompleteStop) {
-      setConfirmation({ kind: "missingDestination", stopId: incompleteStop.id, destinationName: incompleteStop.title });
-      return;
-    }
-    const missingRequirementStop = perStopSections.find((stop) => {
-      const current = selectedByDestination[stop.id] || EMPTY_SELECTED;
-      if (inputs.budgetIncludesFlights && !current.flight) return true;
-      if (!current.hotel) return true;
-      return false;
-    });
-    if (missingRequirementStop) {
-      const current = selectedByDestination[missingRequirementStop.id] || EMPTY_SELECTED;
-      setConfirmation({
-        kind: "missingRequirement",
-        stopId: missingRequirementStop.id,
-        destinationName: missingRequirementStop.title,
-        missing: !current.hotel ? "hotel" : "flight",
-      });
-      return;
-    }
-    sessionStorage.setItem("gene-recommendation-payload", JSON.stringify(sessionPayload));
-    router.push(`/ai/day-by-day?planId=${planId}`);
+    persistSessionPayload();
+    window.location.assign(`/ai/day-by-day?planId=${planId}`);
   }
 
   const setUpgradeTargetHotelId = (itemId: string | null) => {
@@ -1018,7 +1549,53 @@ export default function RecommendationWorkspace({ planId, planInput, recommendat
   );
   const budgetLevelInfo = getBudgetLevel(inputs.budget, selectedTotalCost);
   const travelerLabel = [inputs.adults ? `${inputs.adults} Adults` : "", inputs.kids ? `${inputs.kids} Child` : "", inputs.elderly ? `${inputs.elderly} Elderly` : ""].filter(Boolean).join(", ") || `${inputs.travelersCount} Travelers`;
-  const aiTipSummary = currentSelected.hotel?.aiTip || currentSelected.flight?.aiTip || currentSelected.activities[0]?.aiTip || "Book early to get the best prices";
+  const selectedIds = useMemo(
+    () =>
+      new Set(
+        perStopSections.flatMap((stop) => {
+          const current = selectedByDestination[stop.id] || EMPTY_SELECTED;
+          return [
+            current.hotel?.id,
+            current.flight?.id,
+            current.restaurant?.id,
+            current.transport?.id,
+            current.car?.id,
+            ...current.activities.map((item) => item.id),
+            ...current.hiddenGems.map((item) => item.id),
+          ].filter(Boolean);
+        }),
+      ),
+    [perStopSections, selectedByDestination],
+  );
+  const aiGuidance = useMemo(() => {
+    const signals = [
+      currentSelected.flight?.aiTip,
+      currentSelected.hotel?.aiTip,
+      currentSelected.activities[0]?.aiTip,
+      currentSelected.hiddenGems[0]?.aiTip,
+      currentSelected.restaurant?.aiTip,
+    ].filter(Boolean) as string[];
+
+    const value =
+      currentSelected.flight && currentSelected.hotel
+        ? "Route aligned"
+        : currentSelected.hotel
+          ? "Stay locked"
+          : currentSelected.flight
+            ? "Flight locked"
+            : currentStop
+              ? `Shape ${currentStop.city}`
+              : "Plan smart";
+
+    return {
+      value,
+      note:
+        signals[0] ||
+        (currentStop
+          ? `Gene is balancing ${currentStop.city} around your ${selectedTripStyle.toLowerCase()} style, current budget, and selected route.`
+          : "Gene is shaping the journey around your budget, style, and timing."),
+    };
+  }, [currentSelected.activities, currentSelected.flight, currentSelected.hiddenGems, currentSelected.hotel, currentSelected.restaurant, currentStop, selectedTripStyle]);
   const activeFilter = "Best for your choice";
   const previewReady = true;
   const stopChipData = perStopSections.map((stop) => ({
@@ -1037,10 +1614,12 @@ export default function RecommendationWorkspace({ planId, planInput, recommendat
           current.activities[0] || getSectionItems(stop, "activities")[0],
           current.hiddenGems[0] || getSectionItems(stop, "events")[0],
           current.restaurant || getSectionItems(stop, "restaurants")[0],
-        ].filter(Boolean);
+        ]
+          .filter(Boolean)
+          .filter((item: any) => !selectedIds.has(item.id));
         return entries.map((item: any) => ({ ...item, stopId: stop.id }));
       }),
-    [inputs.budgetIncludesFlights, selectedByDestination, visibleStops],
+    [inputs.budgetIncludesFlights, selectedByDestination, selectedIds, visibleStops],
   );
   const suggestions = useMemo(
     () =>
@@ -1053,8 +1632,9 @@ export default function RecommendationWorkspace({ planId, planInput, recommendat
         (item: any) => item.totalPrice ?? item.price ?? item.pricePerPerson ?? item.priceFrom ?? 0,
       )
         .filter((item: any) => item.destinationId === currentStop?.id)
+        .filter((item: any) => !selectedIds.has(item.id))
         .slice(0, 4),
-    [currentStop],
+    [currentStop, selectedIds],
   );
   const dayOverviewCards = stopChipData.map((stop, index) => {
     const current = selectedByDestination[stop.id] || EMPTY_SELECTED;
@@ -1162,11 +1742,11 @@ export default function RecommendationWorkspace({ planId, planInput, recommendat
           </div>
         </div>
 
-        <div className="grid gap-[1px] overflow-hidden rounded-[20px] border border-white/10 bg-black xl:grid-cols-[1.02fr_0.98fr_1fr_1.18fr]">
+        <div className="grid gap-[1px] overflow-hidden rounded-[20px] border border-white/10 bg-black md:grid-cols-2 xl:grid-cols-4">
           <TopMetricCard className="rounded-none border-0" icon={<Wallet size={18} />} label="Total Trip Cost" value={money(selectedTotalCost)} note={`For ${inputs.travelersCount} travelers`} />
           <TopMetricCard className="rounded-none border-0" icon={<ArrowLeftRight size={18} />} label="Budget Level" value={budgetLevelInfo.label} note={budgetLevelInfo.note} />
           <TopMetricCard className="rounded-none border-0" icon={<MoonStar size={18} />} label="Days Without Trips" value={`${inputs.daysWithoutTrips?.length || inputs.noTripDays || 0} Day${(inputs.daysWithoutTrips?.length || inputs.noTripDays || 0) === 1 ? "" : "s"}`} note="Rest & relax" />
-          <TopMetricCard className="rounded-none border-0" icon={<Sparkles size={18} />} label="AI Tip" value="View tips" note={aiTipSummary} highlight />
+          <TopMetricCard className="rounded-none border-0" icon={<Sparkles size={18} />} label="AI Tip" value={aiGuidance.value} note={aiGuidance.note} highlight />
         </div>
 
         <div className="rounded-[24px] border border-white/10 bg-black p-4 shadow-[0_24px_70px_rgba(0,0,0,0.24)]">
@@ -1180,11 +1760,11 @@ export default function RecommendationWorkspace({ planId, planInput, recommendat
             </div>
             <button type="button" className="rounded-full border border-[#ff7a00]/34 px-4 py-2 text-[13px] text-[#ffb15b] transition hover:bg-[#ff7a00]/08">How it works</button>
           </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-3 xl:grid-cols-9">
+          <div className="mt-4 flex gap-3 overflow-x-auto pb-1 [scrollbar-width:none] md:grid md:grid-cols-3 xl:grid-cols-9 xl:overflow-visible">
             {[{ label: "Best for your choice", icon: <Sparkles size={22} /> }, { label: "Luxury", icon: <Gem size={22} /> }, { label: "Romantic", icon: <Heart size={22} /> }, { label: "Backpacking", icon: <Compass size={22} /> }, { label: "Photography", icon: <Camera size={22} /> }, { label: "Foodie", icon: <UtensilsCrossed size={22} /> }, { label: "Adventure", icon: <Mountain size={22} /> }, { label: "Family", icon: <Users size={22} /> }, { label: "Wellness", icon: <Leaf size={22} /> }].map((style) => {
               const active = selectedTripStyle === style.label;
               return (
-                <button key={style.label} type="button" onClick={() => { setSelectedTripStyle(style.label); if (style.label === "Best for your choice") triggerBestForChoice(); }} className={`flex min-h-[122px] flex-col items-center justify-center rounded-[18px] border px-4 py-4 text-center transition ${active ? "border-[#ff7a00]/55 bg-[linear-gradient(180deg,rgba(255,122,0,0.22),rgba(255,122,0,0.07))] text-[#ffb15b] shadow-[0_0_30px_rgba(255,122,0,0.16)]" : "border-white/10 bg-black text-white/82 hover:border-[#ff7a00]/34 hover:bg-[#ff7a00]/08"}`}>
+                <button key={style.label} type="button" onClick={() => { setSelectedTripStyle(style.label); if (style.label === "Best for your choice") triggerBestForChoice(); }} className={`flex min-h-[108px] min-w-[132px] shrink-0 flex-col items-center justify-center rounded-[18px] border px-4 py-4 text-center transition md:min-w-0 md:flex-auto md:min-h-[122px] ${active ? "border-[#ff7a00]/55 bg-[linear-gradient(180deg,rgba(255,122,0,0.22),rgba(255,122,0,0.07))] text-[#ffb15b] shadow-[0_0_30px_rgba(255,122,0,0.16)]" : "border-white/10 bg-black text-white/82 hover:border-[#ff7a00]/34 hover:bg-[#ff7a00]/08"}`}>
                   <span className={`${active ? "text-[#ff9d4d]" : "text-white/80"}`}>{style.icon}</span>
                   <span className="mt-4 text-[15px] font-medium leading-5">{style.label}</span>
                 </button>
@@ -1193,11 +1773,11 @@ export default function RecommendationWorkspace({ planId, planInput, recommendat
           </div>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <div className="flex gap-3 overflow-x-auto pb-1 [scrollbar-width:none] md:grid md:grid-cols-3 xl:grid-cols-6 xl:overflow-visible">
           {[{ key: "stays" as FlowCategory, title: "Stays", subtitle: "Hotels & more", icon: <Hotel size={18} className="text-[#ff9d4d]" /> }, { key: "flights" as FlowCategory, title: "Flights", subtitle: "Best options", icon: <Plane size={18} className="text-[#8ac5ff]" /> }, { key: "transport" as FlowCategory, title: "Transport", subtitle: "Transfers & more", icon: <CarFront size={18} className="text-white" /> }, { key: "activities" as FlowCategory, title: "Activities", subtitle: "Tours & tickets", icon: <Ticket size={18} className="text-white" /> }, { key: "restaurants" as FlowCategory, title: "Restaurants", subtitle: "Local & fine dining", icon: <UtensilsCrossed size={18} className="text-[#ffb15b]" /> }, { key: "events" as FlowCategory, title: "Events", subtitle: "What's happening", icon: <Sparkles size={18} className="text-[#ff77d6]" /> }].map((card) => {
             const active = activeCategory === card.key;
             return (
-              <button key={card.key} type="button" onClick={() => toggleSection(card.key)} className={`rounded-[18px] border p-4 text-left transition ${active ? "border-[#ff7a00]/48 bg-[linear-gradient(180deg,rgba(255,122,0,0.14),rgba(0,0,0,0.12))] shadow-[0_0_24px_rgba(255,122,0,0.12)]" : "border-white/10 bg-black hover:border-[#ff7a00]/34 hover:bg-[#ff7a00]/08"}`}>
+              <button key={card.key} type="button" onClick={() => toggleSection(card.key)} className={`min-w-[158px] shrink-0 rounded-[18px] border p-4 text-left transition md:min-w-0 ${active ? "border-[#ff7a00]/48 bg-[linear-gradient(180deg,rgba(255,122,0,0.14),rgba(0,0,0,0.12))] shadow-[0_0_24px_rgba(255,122,0,0.12)]" : "border-white/10 bg-black hover:border-[#ff7a00]/34 hover:bg-[#ff7a00]/08"}`}>
                 <div className="flex items-start gap-3">
                   <span className="mt-0.5">{card.icon}</span>
                   <div>
@@ -1224,20 +1804,24 @@ export default function RecommendationWorkspace({ planId, planInput, recommendat
               </div>
             </div>
           </div>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:none] md:grid md:grid-cols-2 xl:grid-cols-4 xl:overflow-visible">
             {topPicks.map((item: any) => (
-              <RecommendationRowCard
+              (() => {
+                const itemCategory = inferItemFlowCategory(item);
+                const itemLivePrice = getSelectedItemCost(item, inputs, itemCategory);
+                return (
+              <TopPickSpotlightCard
                 key={`top-pick-${item.id}`}
                 title={item.name || item.title}
-                subtitle={item.destinationLabel || item.locationLabel || item.neighborhood || item.area || ""}
+                subtitle={item.aiReason || item.whyItFits || item.destinationLabel || item.locationLabel || item.neighborhood || item.area || ""}
                 imageUrl={item.imageUrl}
                 badges={[
                   { label: item.destinationLabel?.split(",")[0] || "Trip", tone: "bg-[#2b7fff] text-white shadow-[0_0_18px_rgba(43,127,255,0.28)]" },
                   { label: selectedTripStyle, tone: "bg-[#ff7a00] text-black shadow-[0_0_18px_rgba(255,122,0,0.28)]" },
                 ]}
                 price={
-                  typeof getSelectedItemCost(item, inputs, "activities") === "number"
-                    ? money(getSelectedItemCost(item, inputs, "activities") || 0)
+                  typeof itemLivePrice === "number"
+                    ? money(itemLivePrice || 0)
                     : item.nightlyPrice
                       ? `${money(item.selectedUpgrade?.totalPrice ?? item.nightlyPrice)} / night`
                       : item.totalFare || item.fare
@@ -1250,8 +1834,18 @@ export default function RecommendationWorkspace({ planId, planInput, recommendat
                               ? `${money(item.dailyPrice)} / day`
                               : "Price unavailable"
                 }
-                priceDetail={item.categoryType || item.categoryLabel || "Top pick"}
-                meta={[typeof item.rating === "number" ? `${item.rating} (${item.reviewCount || item.reviewsLabel || "reviews"})` : "", item.aiLabel || "", item.fitTags?.[0] || ""]}
+                priceDetail={item.liveBooking?.label || item.aiTip || item.whyItFits || "Live trip option"}
+                upgradeLabel={
+                  "selectedUpgrade" in item && item.selectedUpgrade?.name
+                    ? `Upgrade: ${item.selectedUpgrade.name}`
+                    : undefined
+                }
+                meta={[
+                  typeof item.rating === "number" ? `${item.rating} stars` : "",
+                  item.aiLabel || "Top pick",
+                  item.fitTags?.[0] || item.categoryType || item.categoryLabel || "",
+                  item.duration || "",
+                ]}
                 active={Boolean(
                   selected.activities.some((activity) => activity.id === item.id) ||
                     selected.hiddenGems.some((gem) => gem.id === item.id) ||
@@ -1281,7 +1875,25 @@ export default function RecommendationWorkspace({ planId, planInput, recommendat
                     updateStopSelection(targetStopId, (current) => ({ ...current, hiddenGems: current.hiddenGems.some((gem) => gem.id === item.id) ? current.hiddenGems : [...current.hiddenGems, item].slice(0, 3) }));
                   }
                 }}
+                onUpgrade={
+                  "nightlyPrice" in item || "fare" in item || "totalFare" in item
+                    ? () => {
+                        const targetStopId = item.destinationId || currentStop?.id || perStopSections[0]?.id;
+                        if (!targetStopId) return;
+                        jumpToDestination(targetStopId);
+                        if ("nightlyPrice" in item) {
+                          updateStopSelection(targetStopId, (current) => ({ ...current, hotel: item }));
+                          setUpgradePanel({ kind: "hotel", stopId: targetStopId, itemId: item.id });
+                        } else {
+                          updateStopSelection(targetStopId, (current) => ({ ...current, flight: item }));
+                          setUpgradePanel({ kind: "flight", stopId: targetStopId, itemId: item.id });
+                        }
+                        }
+                    : undefined
+                }
               />
+                );
+              })()
             ))}
           </div>
         </section>
@@ -1481,9 +2093,9 @@ export default function RecommendationWorkspace({ planId, planInput, recommendat
             </div>
             <button type="button" className="text-[14px] font-medium text-[#ffb15b]">View full plan</button>
           </div>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:none] md:grid md:grid-cols-2 xl:grid-cols-4 xl:overflow-visible">
             {dayOverviewCards.map((card) => (
-              <article key={`day-overview-${card.id}`} className="overflow-hidden rounded-[18px] border border-white/10 bg-black">
+              <article key={`day-overview-${card.id}`} className="min-w-[280px] shrink-0 overflow-hidden rounded-[18px] border border-white/10 bg-black md:min-w-0">
                 <div className="relative h-[210px]">
                   <img src={card.imageUrl} alt={card.title} className="h-full w-full object-cover" />
                   <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.05),rgba(0,0,0,0.86))]" />
@@ -1511,38 +2123,27 @@ export default function RecommendationWorkspace({ planId, planInput, recommendat
             <h2 className="text-[30px] font-medium text-white">Smart Suggestions for You</h2>
             <div className="mt-1 text-[14px] text-white/52">For {currentStop?.title || "your current destination"} • {selectedTripStyle}</div>
           </div>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:none] md:grid md:grid-cols-2 xl:grid-cols-4 xl:overflow-visible">
             {suggestions.map((item: any) => (
-              <article key={`smart-suggestion-${item.id}`} className="overflow-hidden rounded-[18px] border border-white/10 bg-black transition hover:border-[#ff7a00]/35">
-                <div className="relative h-[170px]">
-                  <img src={item.imageUrl || "/recommendation-bg.jpg"} alt={item.name || item.title} className="h-full w-full object-cover" />
-                  <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.12),rgba(0,0,0,0.84))]" />
-                  <div className="absolute left-4 top-4 flex flex-wrap gap-1.5">
-                    <div className="rounded-full bg-[#2b7fff] px-2.5 py-1 text-[10px] font-medium text-white">{item.destinationLabel?.split(",")[0] || currentStop?.city || "Destination"}</div>
-                    <div className="rounded-full bg-[#ff7a00] px-2.5 py-1 text-[10px] font-medium text-black">{item.fitTags?.[0] || selectedTripStyle}</div>
-                  </div>
-                  <div className="absolute inset-x-4 bottom-4">
-                    <div className="text-[18px] font-medium text-white">{item.name || item.title}</div>
-                    <div className="mt-1 text-[13px] text-white/60">{item.destinationLabel || item.locationLabel || item.neighborhood || ""}</div>
-                    <div className="mt-2 text-[12px] text-white/70">{item.aiReason || item.whyItFits || "A strong optional add-on for this stop."}</div>
-                    <div className="mt-3 flex items-center justify-between gap-3">
-                      <div className="text-[14px] font-medium text-white">{item.priceFrom ? `from ${money(item.priceFrom)}` : item.pricePerPerson ? `from ${money(item.pricePerPerson)}` : item.price ? `from ${money(item.price)}` : "Provider price"}</div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!currentStop) return;
-                          if ("pricePerPerson" in item) updateStopSelection(currentStop.id, (current) => ({ ...current, restaurant: item }));
-                          else if ("categoryLabel" in item) updateStopSelection(currentStop.id, (current) => ({ ...current, activities: current.activities.some((activity) => activity.id === item.id) ? current.activities : [...current.activities, item].slice(0, 5) }));
-                          else updateStopSelection(currentStop.id, (current) => ({ ...current, hiddenGems: current.hiddenGems.some((event) => event.id === item.id) ? current.hiddenGems : [...current.hiddenGems, item].slice(0, 3) }));
-                        }}
-                        className="rounded-[10px] border border-[#ff7a00]/52 px-3.5 py-1.5 text-[12px] font-medium text-[#ffae57] transition hover:bg-[#ff7a00]/10"
-                      >
-                        Add
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </article>
+              <SmartSuggestionShowcaseCard
+                key={`smart-suggestion-${item.id}`}
+                title={item.name || item.title}
+                subtitle={item.destinationLabel || item.locationLabel || item.neighborhood || ""}
+                imageUrl={item.imageUrl}
+                description={item.aiReason || item.whyItFits || "A strong optional add-on for this stop."}
+                price={item.priceFrom ? `from ${money(item.priceFrom)}` : item.pricePerPerson ? `from ${money(item.pricePerPerson)}` : item.price ? `from ${money(item.price)}` : "Provider price"}
+                labels={[
+                  { label: item.destinationLabel?.split(",")[0] || currentStop?.city || "Destination", tone: "bg-[#2b7fff] text-white shadow-[0_0_18px_rgba(43,127,255,0.28)]" },
+                  { label: item.fitTags?.[0] || selectedTripStyle, tone: "bg-[#ff7a00] text-black shadow-[0_0_18px_rgba(255,122,0,0.28)]" },
+                  ...(item.aiLabel ? [{ label: item.aiLabel, tone: badgeToneClasses(item.aiLabel) }] : []),
+                ]}
+                onAdd={() => {
+                  if (!currentStop) return;
+                  if ("pricePerPerson" in item) updateStopSelection(currentStop.id, (current) => ({ ...current, restaurant: item }));
+                  else if ("categoryLabel" in item) updateStopSelection(currentStop.id, (current) => ({ ...current, activities: current.activities.some((activity) => activity.id === item.id) ? current.activities : [...current.activities, item].slice(0, 5) }));
+                  else updateStopSelection(currentStop.id, (current) => ({ ...current, hiddenGems: current.hiddenGems.some((event) => event.id === item.id) ? current.hiddenGems : [...current.hiddenGems, item].slice(0, 3) }));
+                }}
+              />
             ))}
           </div>
         </section>
@@ -1609,7 +2210,7 @@ export default function RecommendationWorkspace({ planId, planInput, recommendat
           </div>
         ) : null}
 
-        <footer className="rounded-[24px] border border-white/10 bg-black p-3 shadow-[0_24px_70px_rgba(0,0,0,0.3)]">
+        <footer className="hidden rounded-[24px] border border-white/10 bg-black p-3 shadow-[0_24px_70px_rgba(0,0,0,0.3)] xl:block">
           <div className="grid gap-[1px] overflow-hidden rounded-[18px] border border-white/10 bg-black xl:grid-cols-[1.04fr_0.96fr_0.98fr_308px] xl:items-stretch">
             <TopMetricCard className="rounded-none border-0" icon={<Wallet size={18} />} label="Total Trip Cost" value={money(selectedTotalCost)} note={`For ${inputs.travelersCount} travelers`} />
             <TopMetricCard className="rounded-none border-0" icon={<ArrowLeftRight size={18} />} label="Budget Level" value={budgetLevelInfo.label} note={budgetLevelInfo.note} />
@@ -1645,8 +2246,8 @@ export default function RecommendationWorkspace({ planId, planInput, recommendat
             secondaryLabel={`Go back to ${confirmation.destinationName}`}
             onPrimary={() => {
               setConfirmation(null);
-              sessionStorage.setItem("gene-recommendation-payload", JSON.stringify(sessionPayload));
-              router.push(`/ai/day-by-day?planId=${planId}`);
+              persistSessionPayload();
+              window.location.assign(`/ai/day-by-day?planId=${planId}`);
             }}
             onSecondary={() => {
               jumpToDestination(confirmation.stopId);
@@ -1663,8 +2264,8 @@ export default function RecommendationWorkspace({ planId, planInput, recommendat
             secondaryLabel="Complete selection"
             onPrimary={() => {
               setConfirmation(null);
-              sessionStorage.setItem("gene-recommendation-payload", JSON.stringify(sessionPayload));
-              router.push(`/ai/day-by-day?planId=${planId}`);
+              persistSessionPayload();
+              window.location.assign(`/ai/day-by-day?planId=${planId}`);
             }}
             onSecondary={() => {
               jumpToDestination(confirmation.stopId);
@@ -1673,6 +2274,16 @@ export default function RecommendationWorkspace({ planId, planInput, recommendat
             }}
           />
         ) : null}
+
+        <div className="fixed inset-x-3 bottom-[82px] z-30 xl:hidden">
+          <button type="button" onClick={goDayByDay} className="flex w-full items-center justify-between rounded-[18px] bg-[linear-gradient(135deg,#ff7a00,rgba(255,162,74,0.95))] px-4 py-3 text-left text-sm font-semibold text-black shadow-[0_16px_46px_rgba(255,122,0,0.28)]">
+            <span>
+              <span className="block">Confirm Selection</span>
+              <span className="mt-0.5 block text-xs text-black/70">Open Day by Day</span>
+            </span>
+            <ArrowRight size={16} />
+          </button>
+        </div>
       </section>
     </AiSuiteFrame>
   );

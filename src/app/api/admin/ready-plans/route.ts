@@ -178,6 +178,25 @@ function buildPlanData(body: any) {
   };
 }
 
+function getPlanDaysCount(value: unknown) {
+  if (!value || typeof value !== "object") return 0;
+  const days = (value as any).days;
+  return Array.isArray(days) ? days.length : 0;
+}
+
+function getPublishValidationErrors(data: ReturnType<typeof buildPlanData>) {
+  const errors: string[] = [];
+
+  if (!data.title.trim()) errors.push("title is required");
+  if (!data.destination.trim()) errors.push("destination is required");
+  if (!data.slug.trim()) errors.push("slug is required");
+  if (data.daysCount < 1 && data.dayRecords.length < 1 && getPlanDaysCount(data.contentJson) < 1) {
+    errors.push("at least one day is required");
+  }
+
+  return errors;
+}
+
 function isSchemaMismatchError(error: unknown) {
   return (
     typeof error === "object" &&
@@ -239,6 +258,14 @@ export async function POST(req: Request) {
 
   if (!data.title || !data.destination || !data.slug) {
     return NextResponse.json({ ok: false, code: "INVALID_INPUT" }, { status: 400 });
+  }
+
+  if (data.status === ReadyPlanStatus.PUBLISHED) {
+    const errors = getPublishValidationErrors(data);
+    if (errors.length) {
+      console.warn("[READY_PLAN_PUBLISH_REJECTED_INVALID]", { slug: data.slug, errors });
+      return NextResponse.json({ ok: false, code: "PUBLISH_VALIDATION_FAILED", errors }, { status: 400 });
+    }
   }
 
   const linksTableExists = await tableExists("ready_plan_links");
@@ -316,6 +343,12 @@ export async function POST(req: Request) {
 
   let created;
   try {
+    console.info("[READY_PLAN_CREATE]", {
+      title: data.title,
+      slug: data.slug,
+      status: data.status,
+      dayCount: data.dayRecords.length,
+    });
     created = await prisma.readyPlan.create({
       data: richCreateData,
       include: {

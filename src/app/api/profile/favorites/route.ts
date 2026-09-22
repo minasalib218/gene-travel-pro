@@ -4,6 +4,14 @@ import { prisma } from "@/lib/db/client";
 import { createRouteClient } from "@/lib/supabase/server";
 import { tableExists } from "@/lib/prisma-safe";
 import { recordUserActivity } from "@/lib/customer-activity";
+import { ensureUserProfile } from "@/lib/profile/ensureUserProfile";
+import {
+  ANALYTICS_ANONYMOUS_COOKIE,
+  ANALYTICS_SESSION_COOKIE,
+  getAnalyticsLocation,
+  parseUserAgent,
+  recordAnalyticsEvent,
+} from "@/lib/analytics-server";
 
 const favoriteSchema = z.object({
   readyPlanId: z.string().min(1),
@@ -13,7 +21,44 @@ async function getUserId() {
   const supabase = createRouteClient();
   const { data, error } = await supabase.auth.getUser();
   if (error || !data?.user) return null;
+  await ensureUserProfile(data.user);
   return data.user.id;
+}
+
+async function recordFavoriteAnalytics(req: NextRequest, input: {
+  userId: string;
+  eventName: "item_favorited" | "item_unfavorited";
+  readyPlanId: string;
+  slug?: string | null;
+  title?: string | null;
+}) {
+  const sessionId = req.cookies.get(ANALYTICS_SESSION_COOKIE)?.value || crypto.randomUUID();
+  const anonymousId = req.cookies.get(ANALYTICS_ANONYMOUS_COOKIE)?.value || null;
+  const { country, city } = getAnalyticsLocation(req.headers);
+  const { deviceType, browser, os } = parseUserAgent(req.headers.get("user-agent"));
+
+  await recordAnalyticsEvent({
+    userId: input.userId,
+    anonymousId,
+    sessionId,
+    eventName: input.eventName,
+    eventCategory: "engagement",
+    pagePath: req.headers.get("referer") || "/profile/favorites",
+    referrer: req.headers.get("referer"),
+    country,
+    city,
+    deviceType,
+    browser,
+    os,
+    readyPlanId: input.readyPlanId,
+    metadata: {
+      entityType: "ready_plan",
+      entityId: input.readyPlanId,
+      slug: input.slug ?? null,
+      title: input.title ?? null,
+      contentName: input.title ?? "Ready Plan",
+    },
+  });
 }
 
 export async function GET() {
@@ -72,6 +117,13 @@ export async function POST(req: NextRequest) {
     entityId: plan.id,
     metadata: { slug: plan.slug, title: plan.title },
   });
+  await recordFavoriteAnalytics(req, {
+    userId,
+    eventName: "item_favorited",
+    readyPlanId: plan.id,
+    slug: plan.slug,
+    title: plan.title,
+  });
 
   return NextResponse.json({ ok: true, favorite });
 }
@@ -101,6 +153,11 @@ export async function DELETE(req: NextRequest) {
     event: "READY_PLAN_UNFAVORITED",
     entityType: "READY_PLAN",
     entityId: parsed.data.readyPlanId,
+  });
+  await recordFavoriteAnalytics(req, {
+    userId,
+    eventName: "item_unfavorited",
+    readyPlanId: parsed.data.readyPlanId,
   });
 
   return NextResponse.json({ ok: true });

@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin/requireAdmin";
+import { hasSupabaseAdminKey } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
 
 const ENV_BY_SERVICE: Record<string, string> = {
   OpenAI: "OPENAI_API_KEY",
-  Supabase: "SUPABASE_SERVICE_ROLE_KEY",
-  "Payment Provider": "PADDLE_API_KEY",
+  Supabase: "SUPABASE_ADMIN_KEY",
+  "Payment Provider": "LEMONSQUEEZY_API_KEY",
   "Email Provider": "RESEND_API_KEY",
   "Booking API": "BOOKING_API_KEY",
   "Flights API": "AMADEUS_API_KEY",
@@ -26,7 +27,11 @@ export async function POST(req: NextRequest) {
     if (!serviceName) return NextResponse.json({ ok: false, code: "SERVICE_REQUIRED" }, { status: 400 });
 
     const envKey = ENV_BY_SERVICE[serviceName];
-    const configured = envKey ? Boolean(process.env[envKey]) : false;
+    const configured = serviceName === "Supabase"
+      ? hasSupabaseAdminKey()
+      : envKey
+        ? Boolean(process.env[envKey])
+        : false;
     const started = Date.now();
     const row = await prisma.apiHealthLog.create({
       data: {

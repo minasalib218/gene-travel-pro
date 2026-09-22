@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createRouteClient } from "@/lib/supabase/server";
 import { recordUserActivity, upsertRecentlyViewed } from "@/lib/customer-activity";
+import { ensureUserProfile } from "@/lib/profile/ensureUserProfile";
 
 const viewedSchema = z.object({
   entityType: z.enum(["READY_PLAN", "PLAN", "HOTEL", "ACTIVITY", "FLIGHT", "TRANSPORT", "EVENT"]),
@@ -16,6 +17,7 @@ export async function POST(req: NextRequest) {
   if (error || !data?.user) {
     return NextResponse.json({ ok: true, tracked: false });
   }
+  await ensureUserProfile(data.user);
 
   const parsed = viewedSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {

@@ -6,6 +6,7 @@ import { getPlanRules } from "@/lib/credits/planRules";
 import { getVerifiedAdmin } from "@/lib/admin/verified";
 import { PassStatus, Prisma } from "@prisma/client";
 import { tableExists } from "@/lib/prisma-safe";
+import { ensureUserProfile } from "@/lib/profile/ensureUserProfile";
 
 async function getProfileActivity(userId: string) {
   const [
@@ -18,6 +19,11 @@ async function getProfileActivity(userId: string) {
     hasBookings,
     hasRecentlyViewed,
     hasUserActivity,
+    hasTravelDocuments,
+    hasSupportTickets,
+    hasOffers,
+    hasCreditLedger,
+    hasNotifications,
   ] = await Promise.all([
     tableExists("favorite_plans").catch(() => false),
     tableExists("favorite_destinations").catch(() => false),
@@ -28,6 +34,11 @@ async function getProfileActivity(userId: string) {
     tableExists("bookings").catch(() => false),
     tableExists("recently_viewed").catch(() => false),
     tableExists("user_activity").catch(() => false),
+    tableExists("travel_documents").catch(() => false),
+    tableExists("support_tickets").catch(() => false),
+    tableExists("offers").catch(() => false),
+    tableExists("credit_ledger").catch(() => false),
+    tableExists("in_app_notifications").catch(() => false),
   ]);
 
   const favoriteRows = hasFavoritePlans
@@ -131,11 +142,110 @@ async function getProfileActivity(userId: string) {
         where: { userId },
       })
     : null;
+  const travelDocuments = hasTravelDocuments
+    ? await prisma.travelDocument.findMany({
+        where: { userId, status: { not: "DELETED" } },
+        orderBy: { createdAt: "desc" },
+        take: 12,
+        select: {
+          id: true,
+          type: true,
+          displayName: true,
+          mimeType: true,
+          fileSize: true,
+          expiryDate: true,
+          tripId: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      })
+    : [];
+  const supportTickets = hasSupportTickets
+    ? await prisma.supportTicket.findMany({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+        take: 8,
+        select: {
+          id: true,
+          subject: true,
+          status: true,
+          priority: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      })
+    : [];
+  const creditLedger = hasCreditLedger
+    ? await prisma.creditLedger.findMany({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+        take: 12,
+        select: {
+          id: true,
+          type: true,
+          actionType: true,
+          creditType: true,
+          amount: true,
+          balanceAfter: true,
+          reason: true,
+          createdAt: true,
+        },
+      })
+    : [];
+  const notifications = hasNotifications
+    ? await prisma.inAppNotification.findMany({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+        take: 12,
+        select: {
+          id: true,
+          type: true,
+          title: true,
+          message: true,
+          status: true,
+          metadata: true,
+          createdAt: true,
+          readAt: true,
+        },
+      })
+    : [];
   const paymentHistory = await prisma.payment.findMany({
     where: { userId },
     orderBy: { createdAt: "desc" },
     take: 12,
   });
+  const personalizedOffers = hasOffers
+    ? await prisma.offer
+        .findMany({
+          where: {
+            status: "published",
+            OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+          },
+          orderBy: [{ featured: "desc" }, { updatedAt: "desc" }],
+          take: 12,
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+            imageUrl: true,
+            iconUrl: true,
+            location: true,
+            country: true,
+            duration: true,
+            startingPrice: true,
+            discountBadge: true,
+            featured: true,
+            expiresAt: true,
+          },
+        })
+        .then((offers) =>
+          offers.map((offer) => ({
+            ...offer,
+            bookingHref: `/api/affiliate/redirect?type=offer&id=${offer.id}`,
+          })),
+        )
+    : [];
   const interestTerms = [
     ...(travelPreference?.travelStyles ?? []),
     ...(travelPreference?.preferredRegions ?? []),
@@ -201,10 +311,16 @@ async function getProfileActivity(userId: string) {
     recentlyViewed,
     activityEvents,
     paymentHistory,
+    travelDocuments,
+    supportTickets,
+    creditLedger,
+    notifications,
+    unreadNotificationsCount: notifications.filter((notification) => !notification.readAt && notification.status !== "READ").length,
+    personalizedOffers,
   };
 }
 
-async function getConfirmedTrips(userId: string) {
+async function getCustomerTrips(userId: string) {
   try {
     return await prisma.$queryRaw<
       Array<{
@@ -224,12 +340,12 @@ async function getConfirmedTrips(userId: string) {
           "summaryJson"
         FROM "plans"
         WHERE "userId" = ${userId}
-          AND "status" = 'CONFIRMED'
+          AND "status" IN ('DRAFT', 'RECOMMENDED', 'ANALYZED', 'CONFIRMED')
         ORDER BY "createdAt" DESC
       `,
     );
   } catch (error) {
-    console.error("Profile confirmed trips warning:", error);
+    console.error("Profile trips warning:", error);
     return [];
   }
 }
@@ -292,7 +408,7 @@ export async function GET() {
 
     if (error) {
       return NextResponse.json(
-        { ok: false, code: "SUPABASE_AUTH_ERROR", message: error.message },
+        { ok: false, code: "SUPABASE_AUTH_ERROR" },
         { status: 401 },
       );
     }
@@ -302,25 +418,18 @@ export async function GET() {
 
   if (!user) return NextResponse.json({ ok: false, code: "NOT_AUTHED" }, { status: 401 });
 
-  const fullName =
-    (user.user_metadata as any)?.full_name ||
-    (user.user_metadata as any)?.name ||
-    "Traveler";
   const adminRules = getPlanRules("agency");
 
-  const profile = await prisma.profile.upsert({
+  const ensuredProfile = await ensureUserProfile(user, "PROFILE_VIEWED");
+  if (!ensuredProfile) {
+    return NextResponse.json(
+      { ok: false, code: "PROFILE_UNAVAILABLE", message: "Profile data is temporarily unavailable." },
+      { status: 503 },
+    );
+  }
+
+  const profile = await prisma.profile.findUnique({
     where: { id: user.id },
-    update: {
-      email: user.email ?? null,
-      fullName,
-      avatarUrl: (user.user_metadata as any)?.avatar_url ?? null,
-    },
-    create: {
-      id: user.id,
-      email: user.email ?? null,
-      fullName,
-      avatarUrl: (user.user_metadata as any)?.avatar_url ?? null,
-    },
     select: {
       id: true,
       role: true,
@@ -332,8 +441,15 @@ export async function GET() {
     },
   });
 
+  if (!profile) {
+    return NextResponse.json(
+      { ok: false, code: "PROFILE_UNAVAILABLE", message: "Profile data is temporarily unavailable." },
+      { status: 503 },
+    );
+  }
+
   if (String(profile.role ?? "").toUpperCase() === "ADMIN") {
-    const confirmedTrips = await getConfirmedTrips(user.id);
+    const confirmedTrips = await getCustomerTrips(user.id);
     const savedReadyPlans = await getSavedReadyPlans(user.id);
     const savedItems = await getSavedItems(user.id);
     const deals = await getDeals();
@@ -392,7 +508,7 @@ export async function GET() {
       meta: true,
     },
   });
-  const confirmedTrips = await getConfirmedTrips(user.id);
+  const confirmedTrips = await getCustomerTrips(user.id);
   const savedReadyPlans = await getSavedReadyPlans(user.id);
   const savedItems = await getSavedItems(user.id);
   const deals = await getDeals();

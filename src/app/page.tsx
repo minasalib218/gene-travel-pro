@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db/client";
 import HomeHeroClient, { type HomeSlide } from "@/components/home/HomeHeroClient";
-import { getDestinationSectionLabel, parseDestinationRecord } from "@/lib/content/destinations";
+import { getDestinationSectionLabel, parseDestinationRecord, type DestinationTripStyleValue } from "@/lib/content/destinations";
 import { parseOfferLiveRecord } from "@/lib/content/offers-live";
 import { parseEventLiveRecord } from "@/lib/content/events-live";
 import { withDatabaseFallback, withExistingTable } from "@/lib/prisma-safe";
@@ -54,16 +54,16 @@ export default async function HomePage() {
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
   let slides = fallbackSlides;
-  let destinationCards: Array<{ title: string; country: string; description: string; image: string; href: string; featured?: boolean }> = [];
-  let offerCards: Array<{ title: string; subtitle: string; image: string; href: string; cta: string }> = [];
-  let eventCards: Array<{ title: string; subtitle: string; image: string; href: string; cta: string }> = [];
+  let destinationCards: Array<{ id?: string; title: string; country: string; description: string; image: string; href: string; featured?: boolean; tripStyles?: DestinationTripStyleValue[] }> = [];
+  let offerCards: Array<{ id?: string; title: string; subtitle: string; image: string; href: string; cta: string }> = [];
+  let eventCards: Array<{ id?: string; title: string; subtitle: string; image: string; href: string; cta: string }> = [];
 
   try {
     const [plans, destinations, offers, events] = await Promise.all([
       withDatabaseFallback(
         () =>
           prisma.readyPlan.findMany({
-            where: { status: "PUBLISHED" },
+            where: { status: "PUBLISHED", showOnHome: true },
             orderBy: { updatedAt: "desc" },
             take: 6,
           }),
@@ -96,6 +96,7 @@ export default async function HomePage() {
 
     if (plans.length > 0) {
       slides = plans.map((plan) => ({
+        id: plan.id,
         title: plan.title,
         subtitle: plan.subtitle || `${plan.destination} cinematic route`,
         image: plan.coverImage || plan.heroImage || "/bg/home-hero-bottom-optimized.jpg",
@@ -116,18 +117,21 @@ export default async function HomePage() {
     destinationCards = destinations.map((row, index) => {
       const record = parseDestinationRecord(row as any);
       return {
+        id: row.id,
         title: record.title,
         country: getDestinationSectionLabel(record.section),
         description: record.description,
         image: record.imageUrl,
         href: `/destinations/${record.slug}`,
         featured: index === 0,
+        tripStyles: record.tripStyles,
       };
     });
 
     offerCards = offers.map((row) => {
       const record = parseOfferLiveRecord(row as any);
       return {
+        id: row.id,
         title: record.title,
         subtitle: record.location || record.startingPrice,
         image: record.imageUrl,
@@ -139,6 +143,7 @@ export default async function HomePage() {
     eventCards = events.map((row) => {
       const record = parseEventLiveRecord(row as any);
       return {
+        id: row.id,
         title: record.title,
         subtitle: record.location || record.dateRange,
         image: record.imageUrl,

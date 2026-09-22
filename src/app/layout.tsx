@@ -7,6 +7,7 @@ import { LanguageProvider } from "@/components/i18n/LanguageProvider";
 import MetaPixel from "@/components/analytics/MetaPixel";
 import GoogleAnalytics from "@/components/analytics/GoogleAnalytics";
 import AnalyticsRuntime from "@/components/analytics/AnalyticsRuntime";
+import { absoluteImageUrl, buildSeoMetadata, jsonLdScript, SITE_NAME, SITE_URL } from "@/lib/seo";
 
 const titleFont = localFont({
   src: [
@@ -18,8 +19,15 @@ const titleFont = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Gene Travel",
-  description: "Cinematic AI travel planner",
+  metadataBase: new URL(SITE_URL),
+  ...buildSeoMetadata({
+    title: "Gene Travel Smarter",
+    description: "Explore cinematic ready plans, destination ideas, travel offers, and AI-assisted trip planning with Gene.",
+    path: "/",
+    image: "/bg/home-hero-bottom-optimized.jpg",
+  }),
+  applicationName: SITE_NAME,
+  category: "travel",
 };
 
 export const viewport: Viewport = {
@@ -51,6 +59,30 @@ export default function RootLayout({children}:{children:ReactNode}){
   document.head.appendChild(script);
 })();`,
           }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={jsonLdScript({
+            "@context": "https://schema.org",
+            "@type": "Organization",
+            name: SITE_NAME,
+            url: SITE_URL,
+            logo: absoluteImageUrl("/images/logo.png"),
+          })}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={jsonLdScript({
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            name: SITE_NAME,
+            url: SITE_URL,
+            potentialAction: {
+              "@type": "SearchAction",
+              target: `${SITE_URL}/ready-plans?search={search_term_string}`,
+              "query-input": "required name=search_term_string",
+            },
+          })}
         />
       </head>
       <body className={titleFont.variable}>

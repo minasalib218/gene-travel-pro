@@ -65,7 +65,7 @@ export default function ProfileHero({ profile, usage }: Props) {
             </Link>
           ) : (
             <Link
-              href="/ai-planner"
+              href="/start-planning"
               className="rounded-full bg-[#ff7a00] px-6 py-3 font-semibold text-black"
             >
               Create New Plan

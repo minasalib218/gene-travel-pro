@@ -311,11 +311,44 @@ const AIRPORTS: AirportRecord[] = [
   { code: "HND", name: "Haneda Airport", city: "Tokyo", country: "Japan", countryCode: "JP" },
 ];
 
+function createSyntheticAirportCode(city: string, countryCode: string, offset = 0) {
+  const letters = city
+    .toUpperCase()
+    .replace(/[^A-Z]/g, "")
+    .slice(0, 3);
+  const padded = `${letters}${countryCode.toUpperCase()}`.slice(0, 3);
+  if (offset === 0) return padded;
+  const last = String.fromCharCode(64 + Math.min(offset + 1, 26));
+  return `${padded.slice(0, 2)}${last}`;
+}
+
+function buildSyntheticAirportRecords(countryCode: string, city?: string | null) {
+  const destinationMatches = DESTINATIONS.filter((item) => item.countryCode === countryCode);
+  const scopedDestinations = city
+    ? destinationMatches.filter((item) => item.city.trim().toLowerCase() === city.trim().toLowerCase())
+    : destinationMatches;
+
+  return scopedDestinations.map((item, index) => ({
+    code: createSyntheticAirportCode(item.city, item.countryCode, index),
+    name: `${item.city} International Airport`,
+    city: item.city,
+    country: item.country,
+    countryCode: item.countryCode,
+  }));
+}
+
 export function getAirportsByCountryCity(countryCode?: string | null, city?: string | null) {
   if (!countryCode) return [];
   const normalizedCity = city?.trim().toLowerCase();
   const scoped = AIRPORTS.filter((airport) => airport.countryCode === countryCode);
-  if (!normalizedCity) return scoped;
+  if (!normalizedCity) {
+    return scoped.length ? scoped : buildSyntheticAirportRecords(countryCode, city);
+  }
   const cityMatches = scoped.filter((airport) => airport.city.trim().toLowerCase() === normalizedCity);
-  return cityMatches.length ? cityMatches : scoped;
+  if (cityMatches.length) return cityMatches;
+
+  const syntheticCityMatches = buildSyntheticAirportRecords(countryCode, city);
+  if (syntheticCityMatches.length) return syntheticCityMatches;
+
+  return scoped.length ? scoped : buildSyntheticAirportRecords(countryCode);
 }

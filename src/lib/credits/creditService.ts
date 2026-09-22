@@ -231,6 +231,10 @@ async function createLedgerRecord(tx: Prisma.TransactionClient, args: {
   balanceAfter?: number | null;
   reason?: string;
   metadata?: JsonMetadata;
+  idempotencyKey?: string | null;
+  generationId?: string | null;
+  planId?: string | null;
+  actorType?: "USER" | "ADMIN" | "SYSTEM";
 }) {
   return tx.creditLedger.create({
     data: {
@@ -245,6 +249,10 @@ async function createLedgerRecord(tx: Prisma.TransactionClient, args: {
       balanceAfter: args.balanceAfter ?? null,
       reason: args.reason ?? null,
       metadata: (args.metadata ?? undefined) as Prisma.InputJsonValue | undefined,
+      idempotencyKey: args.idempotencyKey ?? null,
+      generationId: args.generationId ?? null,
+      planId: args.planId ?? null,
+      actorType: args.actorType ?? "USER",
     },
   });
 }
@@ -277,6 +285,7 @@ export async function consumeMainCredit(userId: string, actionType: MainCreditAc
           actionType,
           planId: typeof metadata?.planId === "string" ? metadata.planId : null,
           meta: (metadata ?? undefined) as Prisma.InputJsonValue | undefined,
+          status: "RUNNING",
         },
       });
     }
@@ -314,6 +323,9 @@ export async function consumeMainCredit(userId: string, actionType: MainCreditAc
       balanceAfter: after,
       reason: `${actionType} consumed 1 main credit.`,
       metadata,
+      idempotencyKey: idempotencyKey ? `charge:${idempotencyKey}` : null,
+      generationId: typeof metadata?.generationId === "string" ? metadata.generationId : idempotencyKey || null,
+      planId: typeof metadata?.planId === "string" ? metadata.planId : null,
     });
 
     return { pass: updated, status: buildStatus(updated), alreadyProcessed: false };
@@ -598,9 +610,21 @@ export async function refundConsumedCredit(userId: string, actionType: string, m
   if (await isAdmin(userId)) {
     return { pass: null, status: buildAdminStatus() };
   }
+  const idempotencyKey = typeof metadata?.idempotencyKey === "string" ? metadata.idempotencyKey.trim() : "";
+  if (!idempotencyKey) {
+    throw new CreditError("IDEMPOTENCY_KEY_REQUIRED", "A generation id is required to reverse a credit safely.");
+  }
+
   return prisma.$transaction(async (tx) => {
+    const action = await tx.tierActionLog.findUnique({ where: { idempotencyKey } });
+    if (!action || action.userId !== userId || action.actionType !== actionType) return null;
+    if (action.refundedAt) {
+      const currentPass = await tx.pass.findUnique({ where: { id: action.passId } });
+      return currentPass ? { pass: currentPass, status: buildStatus(currentPass), alreadyRefunded: true } : null;
+    }
+
     const pass = await tx.pass.findFirst({
-      where: { userId, status: PassStatus.ACTIVE },
+      where: { id: action.passId, userId, status: PassStatus.ACTIVE },
       orderBy: [{ expiresAt: "desc" }, { createdAt: "desc" }],
     });
     if (!pass) return null;
@@ -641,9 +665,25 @@ export async function refundConsumedCredit(userId: string, actionType: string, m
         balanceAfter: after,
         reason: "AI_FAILED",
         metadata: (metadata ?? undefined) as Prisma.InputJsonValue | undefined,
+        idempotencyKey: `refund:${idempotencyKey}`,
+        generationId: typeof metadata?.generationId === "string" ? metadata.generationId : idempotencyKey,
+        planId: typeof metadata?.planId === "string" ? metadata.planId : action.planId,
+        actorType: "SYSTEM",
       },
     });
-    return { pass: updated, status: buildStatus(updated) };
+    await tx.tierActionLog.update({
+      where: { id: action.id },
+      data: { status: "FAILED", refundedAt: new Date(), errorCode: "AI_FAILED" },
+    });
+    return { pass: updated, status: buildStatus(updated), alreadyRefunded: false };
+  });
+}
+
+export async function completeCreditAction(userId: string, idempotencyKey: string) {
+  if (!idempotencyKey.trim() || (await isAdmin(userId))) return null;
+  return prisma.tierActionLog.updateMany({
+    where: { userId, idempotencyKey, status: "RUNNING", refundedAt: null },
+    data: { status: "COMPLETED", completedAt: new Date(), errorCode: null },
   });
 }
 

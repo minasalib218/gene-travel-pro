@@ -69,11 +69,7 @@ export async function GET(req: Request) {
   } catch (e: any) {
     console.error("grant-pass error:", e);
     return NextResponse.json(
-      {
-        ok: false,
-        code: "INTERNAL_ERROR",
-        message: e?.message ?? String(e),
-      },
+      { ok: false, code: "INTERNAL_ERROR" },
       { status: 500 }
     );
   }

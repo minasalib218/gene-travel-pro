@@ -11,7 +11,7 @@ export async function POST() {
 
     const supabase = createRouteClient();
     const { data, error } = await supabase.auth.getUser();
-    if (error) return NextResponse.json({ ok: false, code: "AUTH_ERROR", message: error.message }, { status: 401 });
+    if (error) return NextResponse.json({ ok: false, code: "AUTH_ERROR" }, { status: 401 });
     if (!data?.user) return NextResponse.json({ ok: false, code: "NOT_AUTHED" }, { status: 401 });
 
     const userId = data.user.id;
@@ -24,6 +24,7 @@ export async function POST() {
 
     return NextResponse.json({ ok: true, userId });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, code: "INTERNAL", message: e?.message ?? String(e) }, { status: 500 });
+    console.error("make-me-admin error:", e);
+    return NextResponse.json({ ok: false, code: "INTERNAL" }, { status: 500 });
   }
 }

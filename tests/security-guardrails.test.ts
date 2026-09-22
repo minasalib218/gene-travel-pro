@@ -57,6 +57,32 @@ assert.doesNotMatch(
 );
 assert.match(affiliateRedirect, /AFFILIATE_ALLOWED_HOSTS/, "Affiliate redirects must use a hostname allowlist.");
 assert.match(affiliateRedirect, /destination\.username\s*\|\|\s*destination\.password/, "Affiliate redirects must reject URL credentials.");
+assert.match(affiliateRedirect, /findOwnedCustomerPlanItem/, "Customer-plan redirects must enforce item ownership.");
+assert.match(affiliateRedirect, /isControlCentreFeatureEnabled\("bookingTracking"\)/, "Customer booking tracking must remain feature-gated.");
+assert.doesNotMatch(
+  affiliateRedirect,
+  /NextResponse\.json\(\{\s*ok:\s*true,\s*(?:url|destinationUrl):/,
+  "Customer-plan availability checks must not expose raw affiliate URLs.",
+);
+
+const controlCentreBookings = read("src/app/api/control-centre/bookings/route.ts");
+assert.match(controlCentreBookings, /requireUser\(\)/, "Booking confirmation must require authentication.");
+assert.match(controlCentreBookings, /updateCustomerBooking/, "Booking confirmation must use the ownership-enforcing repository.");
+assert.match(controlCentreBookings, /encryptBookingReference/, "Booking references must be encrypted before persistence.");
+assert.match(
+  controlCentreBookings,
+  /OTHER_PROVIDER"\s*\?\s*\{\s*confirmationSource:\s*"CUSTOMER",\s*bookingSource:\s*"OTHER_PROVIDER"/,
+  "Other-provider bookings must retain their customer-confirmed source.",
+);
+
+const controlCentreRepository = read("src/lib/control-centre/repository.ts");
+assert.match(controlCentreRepository, /p\.user_id = \$\{args\.userId\}::uuid/, "Control Centre item reads must enforce plan ownership.");
+assert.doesNotMatch(controlCentreRepository, /\$queryRawUnsafe|\$executeRawUnsafe/, "Control Centre SQL must remain parameterized.");
+
+const controlCentrePage = read("src/app/profile/control-centre/page.tsx");
+assert.match(controlCentrePage, /isControlCentreFeatureEnabled\("controlCentre"\)/, "Control Centre UI must remain feature-gated.");
+assert.match(controlCentrePage, /auth\.getUser\(\)/, "Control Centre UI must verify the authenticated user server-side.");
+assert.match(controlCentrePage, /listCustomerControlCentreTrips\(data\.user\.id\)/, "Control Centre data must be scoped to the authenticated user.");
 
 const debugDb = read("src/app/api/debug-db/route.ts");
 assert.match(debugDb, /NODE_ENV === "production"/, "The database diagnostic must be disabled in production.");

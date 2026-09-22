@@ -4,17 +4,53 @@ import { notFound } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import { prisma } from "@/lib/db/client";
 import { parseOfferLiveRecord } from "@/lib/content/offers-live";
+import { buildSeoMetadata, jsonLdScript, SITE_URL } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
+async function getPublishedOffer(slug: string) {
+  return prisma.offer.findFirst({ where: { slug, status: "published" } }).catch(() => null);
+}
+
+export async function generateMetadata({ params }: { params: { slug: string } }) {
+  const row = await getPublishedOffer(params.slug);
+  if (!row) {
+    return buildSeoMetadata({
+      title: "Offer Not Found",
+      description: "This Gene offer is private, unpublished, or no longer available.",
+      path: `/offers/${params.slug}`,
+      noIndex: true,
+    });
+  }
+
+  const offer = parseOfferLiveRecord(row as any);
+  return buildSeoMetadata({
+    title: offer.title,
+    description: offer.description,
+    path: `/offers/${offer.slug}`,
+    image: offer.imageUrl,
+  });
+}
+
 export default async function OfferDetailPage({ params }: { params: { slug: string } }) {
-  const row = await prisma.offer.findFirst({ where: { slug: params.slug, status: "published" } }).catch(() => null);
+  const row = await getPublishedOffer(params.slug);
   if (!row) return notFound();
   const offer = parseOfferLiveRecord(row as any);
   const bookingHref = offer.affiliateLink ? `/api/affiliate/redirect?type=offer&id=${encodeURIComponent(offer.id)}` : null;
 
   return (
     <main className="min-h-screen bg-[#050505] text-white">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={jsonLdScript({
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            { "@type": "ListItem", position: 1, name: "Offers", item: `${SITE_URL}/offers` },
+            { "@type": "ListItem", position: 2, name: offer.title, item: `${SITE_URL}/offers/${offer.slug}` },
+          ],
+        })}
+      />
       <Navbar />
       <section className="relative min-h-[88svh] overflow-hidden">
         <div className="absolute inset-0">

@@ -13,6 +13,7 @@ import { tableExists } from "@/lib/prisma-safe";
 import { getLegacyReadyPlanById, updateLegacyReadyPlan } from "@/lib/ready-plan-legacy";
 
 const BOOK_NOW_LABEL = "Book Now";
+const FULL_CONTENT_SAVE_INTENT = "admin-ready-plan-full-content-save";
 
 function toOptionalString(value: unknown) {
   if (typeof value !== "string") return null;
@@ -178,8 +179,45 @@ function buildUpdateData(body: any) {
   return data;
 }
 
+function getContentRewriteStats(data: Record<string, unknown>) {
+  const dayRecords = Array.isArray(data.dayRecords) ? (data.dayRecords as any[]) : [];
+  const itemCount = dayRecords.reduce((total, dayRecord) => {
+    const createdItems = Array.isArray(dayRecord?.itemRecords?.create) ? dayRecord.itemRecords.create : [];
+    return total + createdItems.length;
+  }, 0);
+
+  return {
+    dayCount: dayRecords.length,
+    itemCount,
+  };
+}
+
 function hasText(value: unknown) {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function getPlanDaysCount(value: unknown) {
+  if (!value || typeof value !== "object") return 0;
+  const days = (value as any).days;
+  return Array.isArray(days) ? days.length : 0;
+}
+
+function getPublishValidationErrors(existing: any, data: Record<string, unknown>) {
+  const title = data.title ?? existing?.title;
+  const destination = data.destination ?? existing?.destination;
+  const slug = data.slug ?? existing?.slug;
+  const daysCount = Number(data.daysCount ?? existing?.daysCount ?? 0) || 0;
+  const contentDaysCount = getPlanDaysCount(data.contentJson ?? existing?.contentJson);
+  const daysJson = data.daysJson ?? existing?.daysJson;
+  const jsonDaysCount = Array.isArray(daysJson) ? daysJson.length : 0;
+  const errors: string[] = [];
+
+  if (!hasText(title)) errors.push("title is required");
+  if (!hasText(destination)) errors.push("destination is required");
+  if (!hasText(slug)) errors.push("slug is required");
+  if (daysCount < 1 && contentDaysCount < 1 && jsonDaysCount < 1) errors.push("at least one day is required");
+
+  return errors;
 }
 
 async function preserveExistingItemFields(planId: string, data: Record<string, unknown>) {
@@ -333,7 +371,57 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (!a.ok) return NextResponse.json({ ok: false, code }, { status: 403 });
 
   const body = await req.json().catch(() => ({}));
+  const shouldRewriteContent = body?.contentJson !== undefined || body?.daysJson !== undefined;
+  if (shouldRewriteContent && body?.contentSaveIntent !== FULL_CONTENT_SAVE_INTENT) {
+    console.warn("[READY_PLAN_UPDATE_REJECTED_MISSING_CONTENT_INTENT]", { planId: params.id });
+    return NextResponse.json({ ok: false, code: "CONTENT_REWRITE_INTENT_REQUIRED" }, { status: 409 });
+  }
+
   const data = buildUpdateData(body);
+  const existingPlan = await prisma.readyPlan
+    .findUnique({
+      where: { id: params.id },
+      select: {
+        id: true,
+        slug: true,
+        title: true,
+        destination: true,
+        daysCount: true,
+        contentJson: true,
+        daysJson: true,
+        updatedAt: true,
+      },
+    })
+    .catch(() => null as any);
+
+  if (!existingPlan) {
+    return NextResponse.json({ ok: false, code: "NOT_FOUND" }, { status: 404 });
+  }
+
+  if (hasText(body?.expectedUpdatedAt)) {
+    const expectedUpdatedAt = new Date(body.expectedUpdatedAt).getTime();
+    const currentUpdatedAt = new Date(existingPlan.updatedAt).getTime();
+    if (Number.isFinite(expectedUpdatedAt) && expectedUpdatedAt !== currentUpdatedAt) {
+      return NextResponse.json({ ok: false, code: "STALE_READY_PLAN_EDIT" }, { status: 409 });
+    }
+  }
+
+  if (shouldRewriteContent) {
+    const stats = getContentRewriteStats(data);
+    if (stats.dayCount < 1 || stats.itemCount < 1) {
+      console.warn("[READY_PLAN_UPDATE_REJECTED_EMPTY_CONTENT]", { planId: params.id, ...stats });
+      return NextResponse.json({ ok: false, code: "CONTENT_REWRITE_EMPTY" }, { status: 400 });
+    }
+  }
+
+  if (data.status === ReadyPlanStatus.PUBLISHED) {
+    const errors = getPublishValidationErrors(existingPlan, data);
+    if (errors.length) {
+      console.warn("[READY_PLAN_PUBLISH_REJECTED_INVALID]", { planId: params.id, errors });
+      return NextResponse.json({ ok: false, code: "PUBLISH_VALIDATION_FAILED", errors }, { status: 400 });
+    }
+  }
+
   const linksTableExists = await tableExists("ready_plan_links");
   const dayRecordsTableExists = await tableExists("ready_plan_days");
   const itemRecordsTableExists = await tableExists("ready_plan_items");
@@ -428,6 +516,15 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   let updated;
   try {
+    const action =
+      data.status === ReadyPlanStatus.PUBLISHED
+        ? "PUBLISH"
+        : data.status === ReadyPlanStatus.DRAFT
+          ? "DRAFT"
+          : shouldRewriteContent
+            ? "UPDATE_CONTENT"
+            : "UPDATE";
+    console.info("[READY_PLAN_UPDATE]", { planId: params.id, action, rewritesContent: shouldRewriteContent });
     updated = await prisma.readyPlan.update({
       where: { id: params.id },
       data: richUpdateData,
@@ -500,6 +597,7 @@ export async function DELETE(_: Request, { params }: { params: { id: string } })
   if (!a.ok) return NextResponse.json({ ok: false, code }, { status: 403 });
 
   const existing = await prisma.readyPlan.findUnique({ where: { id: params.id } });
+  console.warn("[READY_PLAN_DELETE]", { planId: params.id, slug: existing?.slug });
   await prisma.readyPlan.delete({ where: { id: params.id } });
   revalidateReadyPlanPaths(existing?.slug);
   return NextResponse.json({ ok: true });

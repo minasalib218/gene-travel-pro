@@ -6,6 +6,8 @@ import type {
   TripDestination,
   UserTripInput,
 } from "@/lib/recommendation/types";
+import { buildBookingReferenceFromRankedItem } from "@/lib/travel-engine/selection-persistence";
+import type { BookingReference } from "@/lib/travel-engine/types";
 
 type BookingState = NonNullable<RecommendationSummaryState["bookingState"]>;
 type BookingItem = BookingState["items"][number];
@@ -98,8 +100,26 @@ function buildUpgrade(
   return null;
 }
 
-function getAffiliateUrl(item: any) {
-  return item?.affiliateUrl ?? item?.liveBooking?.bookingUrl ?? null;
+function buildBookingReference(item: any): BookingReference | undefined {
+  if (item?.bookingReference) return item.bookingReference as BookingReference;
+  if (item?.normalizedItem) return buildBookingReferenceFromRankedItem(item.normalizedItem);
+  if (item?.sourceUrl || item?.affiliateUrl || item?.deepLink) {
+    return {
+      supplier: item?.provider ?? null,
+      supplierItemId: item?.supplierItemId ?? null,
+      sourceUrl: item?.sourceUrl ?? item?.affiliateUrl ?? item?.deepLink ?? null,
+      category: item?.categoryLabel ? "activity" : item?.transportType ? "transport" : item?.cuisine ? "restaurant" : item?.nightlyPrice ? "hotel" : item?.fare ? "flight" : "activity",
+      affiliateEligible: Boolean(item?.affiliateEligible ?? item?.affiliateUrl ?? item?.deepLink),
+      internalId: item?.internalId ?? item?.id ?? null,
+      lastValidatedAt: item?.lastValidatedAt ?? null,
+    };
+  }
+  return undefined;
+}
+
+function getAvailabilityState(reference?: BookingReference) {
+  if (!reference) return "unavailable" as const;
+  return reference.affiliateEligible && reference.sourceUrl ? "ready" : "unavailable";
 }
 
 function getDestinationIdFromItem(item: any, fallbackId?: string) {
@@ -143,7 +163,10 @@ function bookingItemBase(
     upgrade: buildUpgrade(args.item, args.type, travelerCount),
     finalPrice: Number.isFinite(args.finalPrice) ? Math.max(args.finalPrice, 0) : 0,
     status: previous?.status ?? "pending",
-    affiliateRedirectUrl: getAffiliateUrl(args.item),
+    affiliateRedirectUrl: previous?.affiliateRedirectUrl ?? null,
+    availabilityState: previous?.availabilityState ?? getAvailabilityState(buildBookingReference(args.item)),
+    bookingReference: previous?.bookingReference ?? buildBookingReference(args.item),
+    lastValidatedAt: previous?.lastValidatedAt ?? buildBookingReference(args.item)?.lastValidatedAt ?? null,
     image: args.item?.imageUrl ?? null,
     subtitle: args.subtitle ?? getDestinationLabelFromItem(args.item, payload, args.destinationId),
   };

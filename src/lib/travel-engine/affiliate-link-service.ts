@@ -1,6 +1,6 @@
-import { buildDeepLink } from "../providers/buildDeepLink";
-import { logTravelEngine } from "./logger";
-import type { BookingReference, RevalidatedBookingResult } from "./types";
+import { buildDeepLink } from "../providers/buildDeepLink.ts";
+import { logTravelEngine } from "./logger.ts";
+import type { BookingReference, RevalidatedBookingResult } from "./types.ts";
 
 function isHttpUrl(value?: string | null) {
   if (!value) return false;

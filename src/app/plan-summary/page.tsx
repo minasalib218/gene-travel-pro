@@ -232,7 +232,7 @@ export default function PlanSummaryPage() {
                 Return to Recommendation
               </Link>
               <Link
-                href="/ai-planner"
+                href="/start-planning"
                 className="rounded-full border border-white/20 bg-white/5 px-6 py-3 text-sm text-white/85"
               >
                 Start New Plan

@@ -7,6 +7,8 @@ import { tableExists } from "@/lib/prisma-safe";
 import { buildDefaultReadyPlanContent } from "@/lib/ready-plan-content";
 import { recordBookingClick, recordUserActivity } from "@/lib/customer-activity";
 import { isIP } from "node:net";
+import { isControlCentreFeatureEnabled } from "@/lib/control-centre/featureFlags";
+import { findOwnedCustomerPlanItem, recordCustomerAffiliateClick } from "@/lib/control-centre/repository";
 
 export const dynamic = "force-dynamic";
 
@@ -59,10 +61,17 @@ function getSafeAffiliateUrl(value: string | null | undefined) {
         return null;
       }
     }
-    return destination.toString();
+    return value;
   } catch {
     return null;
   }
+}
+
+function bookingUnavailable(req: NextRequest, resolveOnly: boolean, status = 404) {
+  if (resolveOnly) {
+    return NextResponse.json({ ok: false, code: "BOOKING_UNAVAILABLE" }, { status });
+  }
+  return NextResponse.redirect(new URL("/booking-unavailable", req.url), 302);
 }
 
 export async function GET(req: NextRequest) {
@@ -76,16 +85,58 @@ export async function GET(req: NextRequest) {
     const readyPlanItemId = req.nextUrl.searchParams.get("itemId");
     const planId = req.nextUrl.searchParams.get("planId");
     const itemKey = req.nextUrl.searchParams.get("itemKey");
+    const customerPlanId = req.nextUrl.searchParams.get("customerPlanId");
+    const customerItemId = req.nextUrl.searchParams.get("customerItemId");
     const resolveOnly = req.nextUrl.searchParams.get("resolve") === "1";
     const sessionId = req.cookies.get(ANALYTICS_SESSION_COOKIE)?.value || crypto.randomUUID();
     const anonymousId = req.cookies.get(ANALYTICS_ANONYMOUS_COOKIE)?.value || null;
     const { country, city } = getAnalyticsLocation(req.headers);
     const { deviceType, browser, os } = parseUserAgent(req.headers.get("user-agent"));
 
+    if (customerPlanId || customerItemId) {
+      if (!isControlCentreFeatureEnabled("bookingTracking")) {
+        return bookingUnavailable(req, resolveOnly);
+      }
+      if (!userId) return NextResponse.json({ ok: false, code: "NOT_AUTHED" }, { status: 401 });
+      if (!customerPlanId || !customerItemId) return bookingUnavailable(req, resolveOnly, 400);
+
+      const item = await findOwnedCustomerPlanItem({ userId, planId: customerPlanId, itemId: customerItemId }).catch(() => null);
+      const destinationUrl = getSafeAffiliateUrl(item?.deeplink);
+      if (!item || !destinationUrl) return bookingUnavailable(req, resolveOnly);
+
+      const click = await recordCustomerAffiliateClick({
+        userId,
+        planId: customerPlanId,
+        itemId: customerItemId,
+        provider: item.provider || "affiliate",
+        sourcePage: req.headers.get("referer"),
+      });
+      if (!click) return bookingUnavailable(req, resolveOnly);
+
+      await recordAnalyticsEvent({
+        userId,
+        anonymousId,
+        sessionId,
+        eventName: "affiliate_clicked",
+        eventCategory: "commerce",
+        pagePath: "/api/affiliate/redirect",
+        referrer: req.headers.get("referer"),
+        country,
+        city,
+        deviceType,
+        browser,
+        os,
+        metadata: { planId: customerPlanId, itemId: customerItemId, provider: item.provider || "affiliate" },
+      });
+
+      if (resolveOnly) return NextResponse.json({ ok: true });
+      return NextResponse.redirect(destinationUrl, { status: 302 });
+    }
+
     if (readyPlanItemId) {
       const [readyPlanId, contentItemId] = readyPlanItemId.split(":");
       if (!readyPlanId || !contentItemId) {
-        return NextResponse.json({ ok: false, message: "Booking link is not available yet. Please try another option." }, { status: 400 });
+        return bookingUnavailable(req, resolveOnly, 400);
       }
 
       const itemRecord = await prisma.readyPlanItem
@@ -117,7 +168,7 @@ export async function GET(req: NextRequest) {
         const destinationUrl = getSafeAffiliateUrl(itemRecord.affiliateUrl);
 
         if (!itemPlan || itemPlan.id !== readyPlanId || itemPlan.status !== "PUBLISHED" || !destinationUrl) {
-          return NextResponse.json({ ok: false, message: "Booking link is not available yet. Please try another option." }, { status: 404 });
+          return bookingUnavailable(req, resolveOnly);
         }
 
         const metadata = {

@@ -4,8 +4,16 @@ import CollectionShowcasePage from "@/components/home/CollectionShowcasePage";
 import { prisma } from "@/lib/db/client";
 import { parseEventLiveRecord } from "@/lib/content/events-live";
 import { withExistingTable } from "@/lib/prisma-safe";
+import { buildSeoMetadata } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
+
+export const metadata = buildSeoMetadata({
+  title: "Travel Events",
+  description: "Discover published Gene events worth traveling for, from festivals and concerts to cultural and seasonal moments.",
+  path: "/events",
+  image: "/images/barcelona.jpg",
+});
 
 export default async function EventsPage() {
   const today = new Date();

@@ -29,6 +29,21 @@ export type GeneAnalyticsEventName =
   | "payment_success"
   | "payment_failed"
   | "search_performed"
+  | "account_created"
+  | "user_signed_in"
+  | "item_favorited"
+  | "item_unfavorited"
+  | "ready_plan_viewed"
+  | "destination_viewed"
+  | "offer_viewed"
+  | "event_viewed"
+  | "booking_link_clicked"
+  | "ai_planner_step_completed"
+  | "ai_generation_started"
+  | "ai_generation_completed"
+  | "ai_generation_failed"
+  | "recommendation_selected"
+  | "recommendation_deselected"
   | "ai_planner_started"
   | "ai_planner_input_saved"
   | "ai_input_completed"
@@ -65,6 +80,7 @@ const ANONYMOUS_KEY = "gene:analytics:anonymous-id";
 const UTM_KEY = "gene:analytics:utm";
 const COOKIE_NAME = "gene_analytics_sid";
 const ANONYMOUS_COOKIE_NAME = "gene_analytics_aid";
+const recentEvents = new Map<string, number>();
 
 function safeWindow() {
   return typeof window !== "undefined" ? window : null;
@@ -205,6 +221,13 @@ export function trackAnalyticsEvent(eventName: GeneAnalyticsEventName, metadata?
       ? `${window.location.pathname}${window.location.search || ""}`
       : "/");
 
+  const dedupeKey = `${eventName}:${pagePath}:${String(metadata?.entityType ?? "")}:${String(metadata?.entityId ?? metadata?.readyPlanId ?? metadata?.planId ?? "")}`;
+  const now = Date.now();
+  const lastSeen = recentEvents.get(dedupeKey) ?? 0;
+  const isDedupeCandidate = eventName.includes("view") || eventName.includes("started") || eventName.includes("completed");
+  if (isDedupeCandidate && now - lastSeen < 2000) return;
+  recentEvents.set(dedupeKey, now);
+
   const payload = buildPayload(eventName, pagePath, metadata);
   fireInternalAnalytics(payload, options?.useBeacon);
   dispatchVendorEvents(eventName, payload.metadata as AnalyticsMetadata, pagePath);
@@ -226,9 +249,13 @@ function dispatchVendorEvents(eventName: GeneAnalyticsEventName, metadata: Analy
       trackGaEvent("view_item", { item_name: "Pricing" });
       break;
     case "ready_plan_clicked":
+    case "ready_plan_viewed":
     case "destination_clicked":
+    case "destination_viewed":
     case "offer_clicked":
+    case "offer_viewed":
     case "event_clicked":
+    case "event_viewed":
       trackMetaViewContent(packageName, metadata);
       trackGaEvent("select_item", { item_name: packageName, item_category: metadata.category || eventName });
       break;
@@ -250,10 +277,12 @@ function dispatchVendorEvents(eventName: GeneAnalyticsEventName, metadata: Analy
       trackGaEvent("generate_lead", metadata);
       break;
     case "signup_completed":
+    case "account_created":
       trackMetaCompleteRegistration(metadata);
       trackGaSignup();
       break;
     case "login_completed":
+    case "user_signed_in":
       trackGaLogin();
       break;
     default:
@@ -269,7 +298,11 @@ export function trackPageView(path?: string) {
   trackAnalyticsEvent("page_view", {}, { pagePath: path });
 }
 
-export function trackSelectItem(eventName: Extract<GeneAnalyticsEventName, "ready_plan_clicked" | "destination_clicked" | "offer_clicked" | "event_clicked">, contentName: string, metadata?: AnalyticsMetadata) {
+export function trackSelectItem(
+  eventName: Extract<GeneAnalyticsEventName, "ready_plan_clicked" | "ready_plan_viewed" | "destination_clicked" | "destination_viewed" | "offer_clicked" | "offer_viewed" | "event_clicked" | "event_viewed">,
+  contentName: string,
+  metadata?: AnalyticsMetadata,
+) {
   trackAnalyticsEvent(eventName, { contentName, ...metadata });
 }
 

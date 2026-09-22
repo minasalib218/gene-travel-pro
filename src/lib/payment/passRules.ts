@@ -9,7 +9,6 @@ export type PassRule = {
   planCredits: number;
   editCredits: number;
   expiresInDays: number;
-  paddlePriceEnv: string;
 };
 
 export const PASS_RULES: Record<PublicPlanType, PassRule> = {
@@ -20,7 +19,6 @@ export const PASS_RULES: Record<PublicPlanType, PassRule> = {
     planCredits: 3,
     editCredits: 10,
     expiresInDays: 7,
-    paddlePriceEnv: "PADDLE_PRICE_STARTER",
   },
   pro: {
     planType: "pro",
@@ -29,7 +27,6 @@ export const PASS_RULES: Record<PublicPlanType, PassRule> = {
     planCredits: 5,
     editCredits: 20,
     expiresInDays: 30,
-    paddlePriceEnv: "PADDLE_PRICE_PRO",
   },
   agency: {
     planType: "agency",
@@ -38,7 +35,6 @@ export const PASS_RULES: Record<PublicPlanType, PassRule> = {
     planCredits: 8,
     editCredits: 35,
     expiresInDays: 30,
-    paddlePriceEnv: "PADDLE_PRICE_AGENCY",
   },
 };
 
@@ -56,10 +52,6 @@ export function getCreditsForPlan(planType: string): number {
   }
 
   return PASS_RULES.starter.planCredits;
-}
-
-export function getPaddlePriceId(planType: PublicPlanType) {
-  return process.env[getPassRule(planType).paddlePriceEnv] || "";
 }
 
 export function mapTierToPublicPlan(tier: string): PublicPlanType {
