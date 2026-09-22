@@ -75,7 +75,7 @@ export default function ControlCentreClient({ name, trips }: { name: string; tri
                       <Metric icon={CircleDollarSign} label="Budget" value={`${money(trip.spentBudget, trip.currency)} / ${money(trip.plannedBudget, trip.currency)}`} />
                       <Metric icon={PlaneTakeoff} label="Readiness" value={trip.readinessScore == null ? "Not checked" : `${trip.readinessScore}%`} progress={trip.readinessScore ?? 0} />
                     </div>
-                    <div className="flex flex-wrap items-center justify-between gap-4 border-t border-white/10 px-5 py-4 sm:px-7"><p className="text-sm text-white/58">{trip.nextAction || "Continue planning to generate your next recommended action."}</p><Link href={`/profile/bookings-reminders?tripId=${trip.id}`} className="inline-flex min-h-11 items-center rounded-xl border border-[#ff7a00]/45 px-5 text-sm font-bold text-[#ffae64]">Manage trip</Link></div>
+                    <div className="flex flex-wrap items-center justify-between gap-4 border-t border-white/10 px-5 py-4 sm:px-7"><p className="text-sm text-white/58">{trip.nextAction || "Continue planning to generate your next recommended action."}</p><Link href={`/profile/control-centre/${trip.id}`} className="inline-flex min-h-11 items-center rounded-xl border border-[#ff7a00]/45 px-5 text-sm font-bold text-[#ffae64]">Manage trip</Link></div>
                   </section>
                 );
               })}

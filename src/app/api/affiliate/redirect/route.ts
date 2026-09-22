@@ -67,6 +67,17 @@ function getSafeAffiliateUrl(value: string | null | undefined) {
   }
 }
 
+function withOpaqueAffiliateSubId(value: string, provider: string | null | undefined, clickId: string) {
+  const normalized = (provider || "").toLowerCase();
+  // Viator product URLs are API-attributed and must be passed through unchanged.
+  if (normalized.includes("viator")) return value;
+  const destination = new URL(value);
+  const configured = process.env[`AFFILIATE_SUBID_PARAM_${normalized.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`];
+  const parameter = configured || (normalized.includes("booking") ? "label" : normalized.includes("travelpayouts") ? "sub_id" : "subid");
+  destination.searchParams.set(parameter, clickId);
+  return destination.toString();
+}
+
 function bookingUnavailable(req: NextRequest, resolveOnly: boolean, status = 404) {
   if (resolveOnly) {
     return NextResponse.json({ ok: false, code: "BOOKING_UNAVAILABLE" }, { status });
@@ -129,8 +140,9 @@ export async function GET(req: NextRequest) {
         metadata: { planId: customerPlanId, itemId: customerItemId, provider: item.provider || "affiliate" },
       });
 
-      if (resolveOnly) return NextResponse.json({ ok: true });
-      return NextResponse.redirect(destinationUrl, { status: 302 });
+      if (resolveOnly) return NextResponse.json({ ok: true, clickId: click.clickId });
+      const trackedDestination = withOpaqueAffiliateSubId(destinationUrl, item.provider, click.clickId);
+      return NextResponse.redirect(getSafeAffiliateUrl(trackedDestination) || destinationUrl, { status: 302 });
     }
 
     if (readyPlanItemId) {
