@@ -234,7 +234,7 @@ export default function ProfileDashboard({ data }: Props) {
   const createPlanHref = hasPlannerAccess ? "/ai-planner" : "/pricing";
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#07111a] text-white">
+    <main className="min-h-screen overflow-x-hidden bg-[#07111a] pb-24 text-white lg:pb-0">
       <ProfileSectionTracker />
       <div className="flex min-h-screen">
         <aside className="hidden w-[260px] shrink-0 border-r border-white/10 bg-[#07111a]/96 lg:block">
@@ -257,7 +257,7 @@ export default function ProfileDashboard({ data }: Props) {
 
         <div className="min-w-0 flex-1">
           <header className="sticky top-0 z-40 border-b border-white/10 bg-[#07111a]/80 backdrop-blur-xl">
-            <div className="flex h-[74px] items-center gap-4 px-4 lg:px-8">
+            <div className="flex h-[62px] items-center gap-3 px-3 sm:h-[68px] sm:px-5 lg:h-[74px] lg:px-8">
               <Link href="/" className="lg:hidden">
                 <GeneLogo imageClassName="h-auto w-[118px]" />
               </Link>
@@ -291,12 +291,12 @@ export default function ProfileDashboard({ data }: Props) {
                 </div>
               </div>
             </div>
-            <nav className="scrollbar-hide flex gap-2 overflow-x-auto border-t border-white/8 px-3 pb-3 pt-2 text-[11px] lg:hidden">
+            <nav className="scrollbar-hide flex gap-2 overflow-x-auto border-t border-white/8 px-3 pb-2 pt-2 text-[10px] sm:text-[11px] lg:hidden">
               {mobileProfileNav.map((item) => (
                 <a
                   key={item.href}
                   href={item.href}
-                  className="inline-flex min-h-11 min-w-[86px] shrink-0 items-center justify-center gap-1.5 rounded-full border border-white/10 bg-white/[0.045] px-3 font-semibold text-white/76"
+                  className="inline-flex min-h-10 min-w-[78px] shrink-0 items-center justify-center gap-1.5 rounded-full border border-white/10 bg-white/[0.045] px-2.5 font-semibold text-white/76 sm:min-w-[86px] sm:px-3"
                 >
                   <item.icon className="h-4 w-4 text-[#ff7a00]" />
                   {item.label}
@@ -316,9 +316,9 @@ export default function ProfileDashboard({ data }: Props) {
             />
             <div className="absolute inset-0 bg-gradient-to-r from-[#07111a] via-[#07111a]/45 to-transparent" />
             <div className="absolute inset-0 bg-gradient-to-t from-[#07111a] via-transparent to-transparent" />
-            <div className="relative mx-auto flex max-w-7xl items-center px-5 py-12 lg:px-8">
+            <div className="relative mx-auto flex max-w-7xl items-center px-4 py-8 sm:px-5 sm:py-10 lg:px-8 lg:py-12">
               <div className="flex flex-col gap-5 sm:flex-row sm:items-end">
-                <div className="relative h-32 w-32 overflow-hidden rounded-full border-4 border-white/22 bg-[#ff7a00] shadow-[0_24px_70px_rgba(0,0,0,0.45)]">
+                <div className="relative h-24 w-24 overflow-hidden rounded-full border-4 border-white/22 bg-[#ff7a00] shadow-[0_24px_70px_rgba(0,0,0,0.45)] sm:h-28 sm:w-28 lg:h-32 lg:w-32">
                   {profile?.avatarUrl ? (
                     <Image src={profile.avatarUrl} alt={profile.fullName || "Profile"} fill className="object-cover" />
                   ) : (
@@ -331,8 +331,8 @@ export default function ProfileDashboard({ data }: Props) {
                   </div>
                 </div>
                 <div className="pb-2">
-                  <h1 className="text-3xl font-black md:text-4xl">{profile?.fullName || firstName(profile?.fullName, profile?.email)}</h1>
-                  <p className="mt-2 text-base text-white/88">
+                  <h1 className="text-2xl font-black sm:text-3xl md:text-4xl">{profile?.fullName || firstName(profile?.fullName, profile?.email)}</h1>
+                  <p className="mt-2 text-sm text-white/88 sm:text-base">
                     Explorer <span className="px-2 text-white/45">•</span> Travel Lover <span className="px-2 text-white/45">•</span> Better Stories Ahead
                   </p>
                   <Link
@@ -349,6 +349,21 @@ export default function ProfileDashboard({ data }: Props) {
               </div>
             </div>
           </section>
+
+          <nav aria-label="Profile shortcuts" className="fixed inset-x-3 bottom-3 z-50 grid grid-cols-5 rounded-2xl border border-white/12 bg-[#08111a]/95 p-1.5 shadow-[0_18px_55px_rgba(0,0,0,.5)] backdrop-blur-2xl lg:hidden">
+            {[
+              { href: "/profile", label: "Profile", icon: User },
+              { href: "/profile/trips", label: "Trips", icon: Plane },
+              { href: createPlanHref, label: "Plan", icon: Sparkles },
+              { href: "/profile/bookings-reminders", label: "Bookings", icon: CalendarDays },
+              { href: "/profile/control-centre", label: "Control", icon: ShieldCheck },
+            ].map((item) => (
+              <Link key={item.label} href={item.href} className="flex min-h-12 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[9px] font-semibold text-white/68 transition active:bg-white/10 sm:text-[10px]">
+                <item.icon className={`h-4 w-4 ${item.label === "Profile" ? "text-[#ff7a00]" : "text-white/70"}`} />
+                <span className="max-w-full truncate">{item.label}</span>
+              </Link>
+            ))}
+          </nav>
 
           <div className="mx-auto max-w-7xl space-y-6 px-5 pb-10 lg:px-8">
             <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">

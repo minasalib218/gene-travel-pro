@@ -67,6 +67,19 @@ function getSafeAffiliateUrl(value: string | null | undefined) {
   }
 }
 
+function getSafeStoredAffiliateUrl(value: string | null | undefined) {
+  if (!value || value.startsWith("//") || /[\r\n]/.test(value)) return null;
+  try {
+    const destination = new URL(value);
+    const hostname = destination.hostname.toLowerCase().replace(/^www\./, "");
+    if (destination.protocol !== "https:" || destination.username || destination.password) return null;
+    if (hostname === "localhost" || hostname.endsWith(".localhost") || isPrivateIp(hostname)) return null;
+    return destination.toString();
+  } catch {
+    return null;
+  }
+}
+
 function withOpaqueAffiliateSubId(value: string, provider: string | null | undefined, clickId: string) {
   const normalized = (provider || "").toLowerCase();
   // Viator product URLs are API-attributed and must be passed through unchanged.
@@ -112,7 +125,7 @@ export async function GET(req: NextRequest) {
       if (!customerPlanId || !customerItemId) return bookingUnavailable(req, resolveOnly, 400);
 
       const item = await findOwnedCustomerPlanItem({ userId, planId: customerPlanId, itemId: customerItemId }).catch(() => null);
-      const destinationUrl = getSafeAffiliateUrl(item?.deeplink);
+      const destinationUrl = getSafeStoredAffiliateUrl(item?.deeplink);
       if (!item || !destinationUrl) return bookingUnavailable(req, resolveOnly);
 
       const click = await recordCustomerAffiliateClick({
@@ -142,7 +155,7 @@ export async function GET(req: NextRequest) {
 
       if (resolveOnly) return NextResponse.json({ ok: true, clickId: click.clickId });
       const trackedDestination = withOpaqueAffiliateSubId(destinationUrl, item.provider, click.clickId);
-      return NextResponse.redirect(getSafeAffiliateUrl(trackedDestination) || destinationUrl, { status: 302 });
+      return NextResponse.redirect(getSafeStoredAffiliateUrl(trackedDestination) || destinationUrl, { status: 302 });
     }
 
     if (readyPlanItemId) {
@@ -177,7 +190,7 @@ export async function GET(req: NextRequest) {
 
       if (itemRecord) {
         const itemPlan = itemRecord.day?.readyPlan;
-        const destinationUrl = getSafeAffiliateUrl(itemRecord.affiliateUrl);
+        const destinationUrl = getSafeStoredAffiliateUrl(itemRecord.affiliateUrl);
 
         if (!itemPlan || itemPlan.id !== readyPlanId || itemPlan.status !== "PUBLISHED" || !destinationUrl) {
           return bookingUnavailable(req, resolveOnly);
@@ -283,7 +296,7 @@ export async function GET(req: NextRequest) {
       });
 
       const item = content.days.flatMap((day) => day.timelineItems).find((entry) => entry.id === contentItemId);
-      const destinationUrl = getSafeAffiliateUrl(item?.deeplink);
+      const destinationUrl = getSafeStoredAffiliateUrl(item?.deeplink);
       if (!destinationUrl) {
         return NextResponse.json({ ok: false, message: "Booking link is not available yet. Please try another option." }, { status: 404 });
       }
@@ -438,7 +451,7 @@ export async function GET(req: NextRequest) {
         metadata,
       });
 
-      const destinationUrl = getSafeAffiliateUrl(linkUrl);
+      const destinationUrl = getSafeStoredAffiliateUrl(linkUrl);
       if (!destinationUrl) {
         return NextResponse.json({ ok: false, message: "Booking link is not available yet. Please try another option." }, { status: 400 });
       }
@@ -490,7 +503,7 @@ export async function GET(req: NextRequest) {
         },
       });
 
-      const destinationUrl = getSafeAffiliateUrl(link.url);
+      const destinationUrl = getSafeStoredAffiliateUrl(link.url);
       if (!destinationUrl) {
         return NextResponse.json({ ok: false, message: "Booking link is not available yet. Please try another option." }, { status: 400 });
       }
