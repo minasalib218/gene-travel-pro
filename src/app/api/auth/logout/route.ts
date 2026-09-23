@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { getSupabaseAnonKey, getSupabaseUrl } from "@/lib/env";
+import { recordUserActivity } from "@/lib/customer-activity";
 
 async function logout(req: Request) {
   const base = new URL(req.url);
@@ -34,6 +35,15 @@ async function logout(req: Request) {
     },
   });
 
+  const { data } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
+  if (data.user) {
+    await recordUserActivity({
+      userId: data.user.id,
+      event: "SIGN_OUT",
+      entityType: "PROFILE",
+      entityId: data.user.id,
+    }).catch(() => undefined);
+  }
   await supabase.auth.signOut().catch(() => null);
   res.cookies.set("admin_auth", "", {
     path: "/",

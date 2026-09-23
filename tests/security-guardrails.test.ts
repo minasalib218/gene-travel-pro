@@ -100,4 +100,17 @@ const publicReadyPlan = read("src/app/ready-plans/[slug]/page.tsx");
 assert.match(publicReadyPlan, /sanitizeReadyPlanContentForPublic/, "Public ready-plan pages must sanitize admin-only/private fields.");
 assert.match(publicReadyPlan, /bookableItemIds/, "Public ready-plan pages must use the backend booking map.");
 
+const authCallback = read("src/app/auth/callback/route.ts");
+assert.match(authCallback, /exchangeCodeForSession/, "The PKCE callback must exchange the authorization code server-side.");
+assert.match(authCallback, /ensureUserProfile/, "The PKCE callback must provision exactly one permanent profile.");
+assert.match(authCallback, /safeInternalPath/, "The PKCE callback must reject unsafe return paths.");
+
+const browserSupabase = read("src/lib/supabase/browser.ts");
+assert.match(browserSupabase, /let browserClient/, "The browser Supabase client must be a singleton.");
+assert.doesNotMatch(browserSupabase, /SERVICE_ROLE|SECRET_KEY/, "The browser client must never reference privileged keys.");
+
+const profilePage = read("src/app/profile/page.tsx");
+assert.match(profilePage, /getCustomerProfileResponse/, "The profile page must use the shared server data loader.");
+assert.doesNotMatch(profilePage, /fetch\(url,/, "The profile page must not make an HTTP request back to its own API.");
+
 console.log("Security guardrail checks passed.");

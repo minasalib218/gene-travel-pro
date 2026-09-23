@@ -36,7 +36,7 @@ export default function ControlCentreClient({ name, trips }: { name: string; tri
       <div className="relative mx-auto grid min-h-screen max-w-[1540px] lg:grid-cols-[250px_minmax(0,1fr)]">
         <aside className="sticky top-0 hidden h-screen border-r border-white/10 bg-[#08111a]/90 py-5 backdrop-blur-2xl lg:flex lg:flex-col">
           <div className="px-7 pb-5"><GeneLogo /></div>
-          <ProfileSidebarNav createPlanHref="/ai-planner" activePage="control-centre" showControlCentre />
+          <ProfileSidebarNav createPlanHref="/profile/create-plan" activePage="control-centre" showControlCentre />
         </aside>
 
         <div className="min-w-0 px-3 pb-24 pt-4 sm:px-6 lg:px-8 lg:pb-12">
@@ -52,7 +52,7 @@ export default function ControlCentreClient({ name, trips }: { name: string; tri
               <PlaneTakeoff className="mx-auto h-9 w-9 text-[#ff7a00]" />
               <h2 className="mt-4 text-xl font-bold">No active Control Centre trip yet</h2>
               <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-white/58">Create or continue an AI trip. Once its itinerary is saved, its live planning status will appear here.</p>
-              <Link href="/ai-planner" className="mt-6 inline-flex min-h-11 items-center rounded-xl bg-[#ff7a00] px-6 text-sm font-black">Create a plan</Link>
+              <Link href="/profile/create-plan" className="mt-6 inline-flex min-h-11 items-center rounded-xl bg-[#ff7a00] px-6 text-sm font-black">Create a plan</Link>
             </section>
           ) : (
             <div className="space-y-6">

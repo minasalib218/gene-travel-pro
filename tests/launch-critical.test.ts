@@ -44,6 +44,12 @@ assert.doesNotMatch(
   /UPDATE\s+["']?(ready_plans|ready_plan_days|ready_plan_items|ready_plan_links)["']?/i,
   "Launch hardening must not rewrite existing ready-plan content.",
 );
+
+const authProfileMigration = read("prisma/migrations/20260923100000_persistent_auth_profile_trigger/migration.sql");
+assert.match(authProfileMigration, /on conflict \(id\) do update/i);
+assert.match(authProfileMigration, /references|auth\.users|after insert on auth\.users/i);
+assert.doesNotMatch(authProfileMigration, /DROP TABLE|TRUNCATE|DELETE FROM/i);
+assert.doesNotMatch(authProfileMigration, /ready_plans|ready_plan_days|ready_plan_items|ready_plan_links|affiliate_links/i);
 assert.doesNotMatch(
   migration,
   /(?:SET|DROP COLUMN|RENAME COLUMN)[\s\S]{0,80}(?:affiliateUrl|affiliateLink|imageUrl|heroImage|coverImage)/i,

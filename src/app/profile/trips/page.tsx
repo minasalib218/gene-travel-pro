@@ -153,7 +153,7 @@ export default async function MyTripsPage() {
     <MyTripsClient
       profile={{ name: profile?.fullName || data.user.email?.split("@")[0] || "Traveler" }}
       trips={[...ownedTrips, ...savedTrips]}
-      createPlanHref="/ai-planner"
+      createPlanHref="/profile/create-plan"
       controlCentreEnabled={isControlCentreFeatureEnabled("controlCentre")}
     />
   );

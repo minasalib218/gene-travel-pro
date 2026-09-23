@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import { getPlanRules } from "@/lib/credits/planRules";
 import ProfileDashboard from "@/components/profile/ProfileDashboard";
+import { GET as getCustomerProfileResponse } from "@/app/api/profile/route";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -252,15 +253,7 @@ function getRequestOrigin() {
 
 async function getProfile(): Promise<ProfileResponse | null> {
   try {
-    const cookieHeader = buildCookieHeader();
-    const base = getRequestOrigin();
-    const url = `${base}/api/profile`;
-
-    const res = await fetch(url, {
-      method: "GET",
-      headers: cookieHeader ? { cookie: cookieHeader } : undefined,
-      cache: "no-store",
-    });
+    const res = await getCustomerProfileResponse();
 
     if (!res.ok) return null;
 

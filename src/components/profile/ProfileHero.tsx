@@ -14,8 +14,6 @@ type Props = {
 };
 
 export default function ProfileHero({ profile, usage }: Props) {
-  const isFree = usage.tier === "free";
-
   return (
     <section className="relative h-[260px] overflow-hidden">
       <Image
@@ -46,7 +44,7 @@ export default function ProfileHero({ profile, usage }: Props) {
 
             <div className="mt-3 inline-flex items-center gap-3 rounded-full bg-black/40 px-4 py-1 text-sm">
               <span className="capitalize">{usage.tier}</span>
-              {!isFree && (
+              {usage.tier !== "free" && (
                 <span className="text-white/60">
                   {usage.plansRemaining} plans left
                 </span>
@@ -56,21 +54,12 @@ export default function ProfileHero({ profile, usage }: Props) {
         </div>
 
         <div className="ml-auto">
-          {isFree ? (
-            <Link
-              href="/pricing"
-              className="rounded-full bg-[#ff7a00] px-6 py-3 font-semibold text-black"
-            >
-              Upgrade & Start Planning
-            </Link>
-          ) : (
-            <Link
-              href="/start-planning"
-              className="rounded-full bg-[#ff7a00] px-6 py-3 font-semibold text-black"
-            >
-              Create New Plan
-            </Link>
-          )}
+          <Link
+            href="/profile/create-plan"
+            className="rounded-full bg-[#ff7a00] px-6 py-3 font-semibold text-black"
+          >
+            Create New Plan
+          </Link>
         </div>
       </div>
     </section>

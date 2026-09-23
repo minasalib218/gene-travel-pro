@@ -116,7 +116,7 @@ export default function ProfileSidebarNav({
           if (item.href) {
             const Icon = item.icon;
             return (
-              <a
+              <Link
                 key={item.section}
                 href={item.href}
                 className={`flex items-center gap-4 rounded-xl px-5 py-4 text-sm transition ${
@@ -127,7 +127,7 @@ export default function ProfileSidebarNav({
               >
                 <Icon className="h-5 w-5 shrink-0" />
                 <span className="flex-1">{item.label}</span>
-              </a>
+              </Link>
             );
           }
           return (
@@ -148,7 +148,11 @@ export default function ProfileSidebarNav({
         })}
         <Link
           href={createPlanHref}
-          className="flex items-center gap-4 rounded-xl px-5 py-4 text-sm text-white/82 transition hover:bg-white/[0.06] hover:text-white"
+          className={`flex items-center gap-4 rounded-xl px-5 py-4 text-sm transition ${
+            activePage === "create-plan"
+              ? "border-l-4 border-[#ff7a00] bg-[#ff7a00]/14 text-[#ff7a00]"
+              : "text-white/82 hover:bg-white/[0.06] hover:text-white"
+          }`}
         >
           <Sparkles className="h-5 w-5 shrink-0" />
           <span className="flex-1">Create a Plan</span>
@@ -170,7 +174,7 @@ export default function ProfileSidebarNav({
           if (item.href) {
             const Icon = item.icon;
             return (
-              <a
+              <Link
                 key={item.section}
                 href={item.href}
                 className={`flex items-center gap-4 rounded-xl px-5 py-4 text-sm transition ${
@@ -181,7 +185,7 @@ export default function ProfileSidebarNav({
               >
                 <Icon className="h-5 w-5 shrink-0" />
                 <span className="flex-1">{item.label}</span>
-              </a>
+              </Link>
             );
           }
 

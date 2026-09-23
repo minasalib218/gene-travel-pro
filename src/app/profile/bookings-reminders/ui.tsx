@@ -288,7 +288,7 @@ export default function BookingsRemindersClient({ profile, initialData }: Props)
       <div className="relative mx-auto grid min-h-screen max-w-[1540px] lg:grid-cols-[250px_minmax(0,1fr)]">
         <aside className="sticky top-0 hidden h-screen border-r border-white/10 bg-[#09111a]/88 py-5 backdrop-blur-2xl lg:flex lg:flex-col">
           <div className="px-7 pb-5"><GeneLogo /></div>
-          <ProfileSidebarNav createPlanHref="/ai-planner" activePage="bookings-reminders" />
+          <ProfileSidebarNav createPlanHref="/profile/create-plan" activePage="bookings-reminders" />
         </aside>
 
         <div className="min-w-0 px-3 pb-28 pt-4 sm:px-6 lg:px-8 lg:pb-12">

@@ -230,8 +230,7 @@ export default function ProfileDashboard({ data }: Props) {
   const favoriteDisplay = (favoritePlans.length ? favoritePlans : savedReadyPlans).slice(0, 4);
   const paddedFavorites = favoriteDisplay;
   const savedItemCount = favoriteDestinations.length + wishlistItems.length;
-  const hasPlannerAccess = usage?.tier && usage.tier !== "free";
-  const createPlanHref = hasPlannerAccess ? "/ai-planner" : "/pricing";
+  const createPlanHref = "/profile/create-plan";
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#07111a] pb-24 text-white lg:pb-0">
