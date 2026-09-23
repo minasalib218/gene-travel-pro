@@ -142,6 +142,8 @@ function SignInInner() {
     try {
       const response = await fetch("/api/auth/session", {
         method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: email.trim().toLowerCase(),

@@ -21,6 +21,9 @@ prisma/manual
 public/bg/home-hero-bottom.png
 public/images/**/*_files
 public/images/**/*_files/**
+# Explicitly exclude captured third-party page assets that may contain provider
+# tokens. These files are not used by the Gene application at runtime.
+public/images/italy&swiss/sug 5_files/**
 public/images/**/*.docx
 public/images/**/*.rtf
 public/images/**/*.txt
