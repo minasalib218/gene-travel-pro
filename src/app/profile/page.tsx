@@ -400,53 +400,6 @@ export default async function ProfilePage() {
 
   if (!data) {
     redirect("/signin?next=/profile");
-
-    return (
-      <main className="relative min-h-screen overflow-hidden bg-[#090909] text-white">
-        <div className="absolute inset-0">
-          <Image
-            src="/images/signup-bg-editorial.jpg"
-            alt="Gene Travel account access"
-            fill
-            priority
-            className="object-cover opacity-80"
-          />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/75 to-black" />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,122,0,0.18),transparent_40%)]" />
-        </div>
-
-        <Navbar />
-
-        <section className="relative z-10 mx-auto flex min-h-screen max-w-5xl items-center px-6 pt-28 pb-12">
-          <div className="w-full rounded-[34px] border border-white/12 bg-black/35 p-8 shadow-[0_30px_100px_rgba(0,0,0,0.55)] backdrop-blur-2xl md:p-10">
-            <div className="text-[11px] uppercase tracking-[0.28em] text-[#ffbf82]">
-              Customer Profile
-            </div>
-            <h1 className="mt-5 text-4xl font-semibold leading-tight md:text-5xl">
-              Sign in to open your private travel profile.
-            </h1>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-white/68">
-              Your profile holds the pass you paid for, the remaining planning tiers, saved ready
-              plans, confirmed journeys, and the next actions that continue your AI flow.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-4">
-              <Link
-                href="/signin?next=/profile"
-                className="rounded-full bg-[linear-gradient(135deg,#ff7a00,rgba(255,208,153,0.96))] px-6 py-3 text-sm font-semibold text-black shadow-[0_16px_50px_rgba(255,122,0,0.22)]"
-              >
-                Sign In
-              </Link>
-              <Link
-                href="/signup"
-                className="rounded-full border border-white/20 bg-white/5 px-6 py-3 text-sm text-white/85"
-              >
-                Create Account
-              </Link>
-            </div>
-          </div>
-        </section>
-      </main>
-    );
   }
 
   return <ProfileDashboard data={data} />;
