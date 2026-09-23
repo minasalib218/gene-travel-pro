@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
 import { Bell, CalendarClock, Check, CircleDollarSign, ExternalLink, Gauge, Luggage, Sparkles } from "lucide-react";
+import ProfileMobileNav from "@/components/profile/ProfileMobileNav";
 import type { ControlCentreWorkspace } from "@/lib/control-centre/repository";
 
 function money(value: number, currency: string) { return new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 0 }).format(value); }
@@ -30,7 +31,7 @@ export default function TripWorkspaceClient({ initial }: { initial: ControlCentr
     setBusy(null); setNotice(response.ok ? "Reminder saved in your profile." : "The reminder could not be saved."); if (response.ok) event.currentTarget.reset();
   }
 
-  return <main className="min-h-screen bg-[#071019] px-3 py-5 text-white sm:px-6 lg:px-10">
+  return <main className="min-h-screen bg-[#071019] px-3 pb-24 pt-5 text-white sm:px-6 lg:px-10 lg:pb-10">
     <div className="mx-auto max-w-7xl">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3"><div><Link href="/profile/control-centre" className="text-xs text-[#ffae64]">Back to Control Centre</Link><h1 className="mt-2 font-serif text-3xl sm:text-4xl">{data.trip.title}</h1><p className="mt-1 text-sm text-white/55">{data.trip.destination}</p></div><div className="rounded-2xl border border-[#ff7a00]/35 bg-[#ff7a00]/10 px-5 py-3 text-center"><strong className="block text-2xl text-[#ff9a3c]">{days}</strong><span className="text-[11px] text-white/60">days to go</span></div></div>
       {notice ? <div className="mb-4 rounded-xl border border-[#ff7a00]/30 bg-[#ff7a00]/10 px-4 py-3 text-sm text-[#ffc38d]">{notice}</div> : null}
@@ -44,5 +45,6 @@ export default function TripWorkspaceClient({ initial }: { initial: ControlCentr
         <Card title="In-app reminders" icon={<Bell className="h-5 w-5 text-[#ff7a00]"/>}><form onSubmit={addReminder} className="space-y-3"><input name="title" required placeholder="Reminder title" className="min-h-11 w-full rounded-lg border border-white/10 bg-black/20 px-3 text-sm"/><input name="when" required type="datetime-local" className="min-h-11 w-full rounded-lg border border-white/10 bg-black/20 px-3 text-sm"/><button disabled={busy==="reminder"} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#ff7a00] text-sm font-bold"><CalendarClock className="h-4 w-4"/>Save reminder</button><Link href={`/profile/bookings-reminders?tripId=${data.trip.id}`} className="block text-center text-xs text-[#ffae64]">View all reminders</Link></form></Card>
       </div>
     </div>
+    <ProfileMobileNav active="control" />
   </main>;
 }

@@ -4,6 +4,7 @@ import { ArrowLeft, Sparkles } from "lucide-react";
 import AffiliateWidgetHub from "@/components/planning/AffiliateWidgetHub";
 import GeneLogo from "@/components/brand/GeneLogo";
 import ProfileSidebarNav from "@/components/profile/ProfileSidebarNav";
+import ProfileMobileNav from "@/components/profile/ProfileMobileNav";
 import { ensureUserProfile } from "@/lib/profile/ensureUserProfile";
 import { createRouteClient } from "@/lib/supabase/server";
 
@@ -18,7 +19,7 @@ export default async function CreatePlanPage() {
   await ensureUserProfile(data.user);
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#050505] text-white">
+    <main className="min-h-screen overflow-x-hidden bg-[#050505] pb-24 text-white lg:pb-0">
       <div className="flex min-h-screen">
         <aside className="hidden w-[260px] shrink-0 border-r border-white/10 bg-[#07111a]/96 lg:block">
           <div className="sticky top-0 flex h-screen flex-col overflow-y-auto">
@@ -47,6 +48,7 @@ export default async function CreatePlanPage() {
           </div>
         </div>
       </div>
+      <ProfileMobileNav active="create" />
     </main>
   );
 }

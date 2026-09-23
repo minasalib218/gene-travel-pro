@@ -4,6 +4,7 @@ import Link from "next/link";
 import { CalendarDays, CheckCircle2, CircleDollarSign, Gauge, Luggage, MapPin, PlaneTakeoff } from "lucide-react";
 import GeneLogo from "@/components/brand/GeneLogo";
 import ProfileSidebarNav from "@/components/profile/ProfileSidebarNav";
+import ProfileMobileNav from "@/components/profile/ProfileMobileNav";
 import type { ControlCentreTripOverview } from "@/lib/control-centre/repository";
 
 function percent(done: number, total: number) {
@@ -83,6 +84,7 @@ export default function ControlCentreClient({ name, trips }: { name: string; tri
           )}
         </div>
       </div>
+      <ProfileMobileNav active="control" />
     </main>
   );
 }

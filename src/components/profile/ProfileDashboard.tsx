@@ -22,6 +22,7 @@ import {
 import ProfileActionPanel from "./ProfileActionPanel";
 import ProfileFavoritesClient from "./ProfileFavoritesClient";
 import ProfileSectionTracker from "./ProfileSectionTracker";
+import ProfileMobileNav from "./ProfileMobileNav";
 import ProfileSidebarNav from "./ProfileSidebarNav";
 import GeneLogo from "@/components/brand/GeneLogo";
 import GlobalSearch from "@/components/search/GlobalSearch";
@@ -90,14 +91,14 @@ function StatCard({
   href?: string;
 }) {
   const content = (
-    <GlassCard className={`rounded-2xl p-5 ${href ? "transition hover:border-[#ff7a00]/45 hover:bg-[#142331]/90" : ""}`}>
-      <div className="flex items-center gap-4">
-        <div className={`flex h-12 w-12 items-center justify-center rounded-full ${iconClass}`}>
-          <Icon className="h-6 w-6" />
+    <GlassCard className={`relative h-full rounded-2xl p-3 sm:p-5 ${href ? "transition hover:border-[#ff7a00]/45 hover:bg-[#142331]/90" : ""}`}>
+      <div className="flex h-full min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full sm:h-12 sm:w-12 ${iconClass}`}>
+          <Icon className="h-5 w-5 sm:h-6 sm:w-6" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-sm text-white/80">{title}</div>
-          <div className="mt-1 text-3xl font-bold leading-none text-white">{value}</div>
+          <div className="truncate text-[11px] text-white/80 sm:text-sm">{title}</div>
+          <div className="mt-1 text-2xl font-bold leading-none text-white sm:text-3xl">{value}</div>
           {progress !== undefined ? (
             <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/12">
               <div
@@ -106,10 +107,10 @@ function StatCard({
               />
             </div>
           ) : note ? (
-            <div className="mt-2 text-sm text-[#8ccfff]">{note}</div>
+            <div className="mt-2 truncate text-[11px] text-[#8ccfff] sm:text-sm">{note}</div>
           ) : null}
         </div>
-        <ChevronRight className="h-5 w-5 text-white/60" />
+        <ChevronRight className="absolute right-3 top-3 h-4 w-4 text-white/45 sm:static sm:h-5 sm:w-5 sm:text-white/60" />
       </div>
     </GlassCard>
   );
@@ -192,14 +193,6 @@ function SectionHeader({ icon: Icon, title, href }: { icon: any; title: string; 
   );
 }
 
-const mobileProfileNav = [
-  { href: "/profile/trips", label: "Trips", icon: Plane },
-  { href: "#favorite-items", label: "Saved", icon: Heart },
-  { href: "#my-credits", label: "Credits", icon: Coins },
-  { href: "#bookings-reminders", label: "Reminders", icon: CalendarDays },
-  { href: "#support", label: "Support", icon: Headphones },
-];
-
 export default function ProfileDashboard({ data }: Props) {
   const {
     profile,
@@ -237,7 +230,7 @@ export default function ProfileDashboard({ data }: Props) {
       <ProfileSectionTracker />
       <div className="flex min-h-screen">
         <aside className="hidden w-[260px] shrink-0 border-r border-white/10 bg-[#07111a]/96 lg:block">
-          <div className="sticky top-0 flex h-screen flex-col overflow-hidden">
+          <div className="sticky top-0 flex h-screen flex-col overflow-y-auto">
             <Link href="/" className="px-9 pb-6 pt-5">
               <GeneLogo imageClassName="h-auto w-[150px]" priority />
             </Link>
@@ -263,7 +256,7 @@ export default function ProfileDashboard({ data }: Props) {
               <nav className="hidden flex-1 justify-center gap-9 text-sm font-medium text-white/86 md:flex">
                 <Link href="/">Explore</Link>
                 <Link href="/ready-plans">Ready Plans</Link>
-                <Link href={createPlanHref}>AI Planner</Link>
+                <Link href={createPlanHref}>Create Plan</Link>
                 <Link href="/destinations">Destinations</Link>
                 <Link href="/offers">Offers</Link>
               </nav>
@@ -290,18 +283,6 @@ export default function ProfileDashboard({ data }: Props) {
                 </div>
               </div>
             </div>
-            <nav className="scrollbar-hide flex gap-2 overflow-x-auto border-t border-white/8 px-3 pb-2 pt-2 text-[10px] sm:text-[11px] lg:hidden">
-              {mobileProfileNav.map((item) => (
-                <a
-                  key={item.href}
-                  href={item.href}
-                  className="inline-flex min-h-10 min-w-[78px] shrink-0 items-center justify-center gap-1.5 rounded-full border border-white/10 bg-white/[0.045] px-2.5 font-semibold text-white/76 sm:min-w-[86px] sm:px-3"
-                >
-                  <item.icon className="h-4 w-4 text-[#ff7a00]" />
-                  {item.label}
-                </a>
-              ))}
-            </nav>
           </header>
 
           <section id="profile-overview" className="relative min-h-[250px] scroll-mt-24 overflow-hidden">
@@ -335,7 +316,7 @@ export default function ProfileDashboard({ data }: Props) {
                     Explorer <span className="px-2 text-white/45">•</span> Travel Lover <span className="px-2 text-white/45">•</span> Better Stories Ahead
                   </p>
                   <Link
-                    href="/profile"
+                    href="#profile-tools"
                     className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/20 bg-[#13202d]/82 px-5 py-3 text-sm font-semibold text-white"
                   >
                     <Settings2 className="h-4 w-4" />
@@ -349,30 +330,17 @@ export default function ProfileDashboard({ data }: Props) {
             </div>
           </section>
 
-          <nav aria-label="Profile shortcuts" className="fixed inset-x-3 bottom-3 z-50 grid grid-cols-5 rounded-2xl border border-white/12 bg-[#08111a]/95 p-1.5 shadow-[0_18px_55px_rgba(0,0,0,.5)] backdrop-blur-2xl lg:hidden">
-            {[
-              { href: "/profile", label: "Profile", icon: User },
-              { href: "/profile/trips", label: "Trips", icon: Plane },
-              { href: createPlanHref, label: "Plan", icon: Sparkles },
-              { href: "/profile/bookings-reminders", label: "Bookings", icon: CalendarDays },
-              { href: "/profile/control-centre", label: "Control", icon: ShieldCheck },
-            ].map((item) => (
-              <Link key={item.label} href={item.href} className="flex min-h-12 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[9px] font-semibold text-white/68 transition active:bg-white/10 sm:text-[10px]">
-                <item.icon className={`h-4 w-4 ${item.label === "Profile" ? "text-[#ff7a00]" : "text-white/70"}`} />
-                <span className="max-w-full truncate">{item.label}</span>
-              </Link>
-            ))}
-          </nav>
+          <ProfileMobileNav active="profile" />
 
           <div className="mx-auto max-w-7xl space-y-6 px-5 pb-10 lg:px-8">
-            <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
               <StatCard icon={Coins} iconClass="bg-[#ff9f1a]/18 text-[#ff9f1a]" title="Plan Credits" value={creditText} progress={progress} />
               <StatCard icon={Plane} iconClass="bg-sky-400/15 text-sky-300" title="Upcoming Trips" value={String(confirmedTrips.length)} note="Open My Trips" href="/profile/trips" />
               <StatCard icon={Heart} iconClass="bg-rose-400/15 text-rose-300" title="Favorite Plans" value={String(favoritePlans.length || savedReadyPlans.length)} note="View all" />
               <StatCard icon={BookOpen} iconClass="bg-emerald-400/15 text-emerald-300" title="Saved Items" value={String(savedItemCount)} note="View all" />
             </section>
 
-            <GlassCard className="rounded-2xl p-5">
+            <GlassCard id="profile-tools" className="scroll-mt-24 rounded-2xl p-4 sm:p-5">
               <SectionHeader icon={Gift} title="Profile Tools" />
               <ProfileActionPanel travelPreference={travelPreference} />
             </GlassCard>

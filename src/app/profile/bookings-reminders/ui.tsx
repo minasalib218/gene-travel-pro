@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import GeneLogo from "@/components/brand/GeneLogo";
 import ProfileSidebarNav from "@/components/profile/ProfileSidebarNav";
+import ProfileMobileNav from "@/components/profile/ProfileMobileNav";
 
 type DateValue = Date | string;
 
@@ -402,12 +403,7 @@ export default function BookingsRemindersClient({ profile, initialData }: Props)
         </div>
       </div>
 
-      <nav className="fixed inset-x-3 bottom-3 z-30 flex items-center justify-around rounded-2xl border border-white/12 bg-[#0b121a]/95 p-2 shadow-2xl backdrop-blur-2xl lg:hidden">
-        <Link href="/profile" className="flex min-h-11 flex-col items-center justify-center px-3 text-[10px] text-white/55"><Plane className="mb-1 h-4 w-4" />Trips</Link>
-        <span className="flex min-h-11 flex-col items-center justify-center px-3 text-[10px] text-[#ff8a1d]"><CalendarDays className="mb-1 h-4 w-4" />Calendar</span>
-        <button onClick={() => setDialogOpen(true)} className="flex min-h-11 flex-col items-center justify-center px-3 text-[10px] text-white/55"><Plus className="mb-1 h-4 w-4" />Reminder</button>
-        <Link href="/profile#notifications" className="flex min-h-11 flex-col items-center justify-center px-3 text-[10px] text-white/55"><Bell className="mb-1 h-4 w-4" />Alerts</Link>
-      </nav>
+      <ProfileMobileNav active="bookings" />
 
       {dialogOpen ? (
         <div role="dialog" aria-modal="true" aria-labelledby="reminder-title" className="fixed inset-0 z-50 grid place-items-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setDialogOpen(false); }}>

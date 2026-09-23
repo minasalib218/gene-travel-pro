@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import GeneLogo from "@/components/brand/GeneLogo";
 import ProfileSidebarNav from "@/components/profile/ProfileSidebarNav";
+import ProfileMobileNav from "@/components/profile/ProfileMobileNav";
 import type { TripAccess, TripDisplayStatus, TripSource } from "@/lib/profile/trip-utils";
 
 export type TripCardData = {
@@ -238,12 +239,7 @@ export default function MyTripsClient({ profile, trips: initialTrips, createPlan
         </div>
       </div>
 
-      <nav className="fixed inset-x-3 bottom-3 z-30 flex items-center justify-around rounded-2xl border border-white/12 bg-[#0b121a]/95 p-2 shadow-2xl backdrop-blur-2xl lg:hidden">
-        <span className="flex min-h-11 flex-col items-center justify-center px-3 text-[10px] text-[#ff8a1d]"><Plane className="mb-1 h-4 w-4" />Trips</span>
-        <Link href="/profile/bookings-reminders" className="flex min-h-11 flex-col items-center justify-center px-3 text-[10px] text-white/55"><CalendarDays className="mb-1 h-4 w-4" />Calendar</Link>
-        <Link href={createPlanHref} className="flex min-h-11 flex-col items-center justify-center px-3 text-[10px] text-white/55"><Sparkles className="mb-1 h-4 w-4" />Create</Link>
-        <Link href="/profile" className="flex min-h-11 flex-col items-center justify-center px-3 text-[10px] text-white/55"><Users className="mb-1 h-4 w-4" />Profile</Link>
-      </nav>
+      <ProfileMobileNav active="trips" />
     </main>
   );
 }
