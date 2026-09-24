@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase/admin";
+import { createRouteClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { ensureUserProfile } from "@/lib/profile/ensureUserProfile";
 import { mergeGuestDataIntoUser, readGuestIdentityFromCookieHeader } from "@/lib/profile/guestMerge";
@@ -53,14 +53,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Passwords do not match." }, { status: 400 });
     }
 
-    const { data: created, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+    // Public signup must prove ownership of the email before it can claim
+    // purchases or credits associated with that address.
+    const supabase = createRouteClient();
+    const { data: created, error: createErr } = await supabase.auth.signUp({
       email,
       password,
-      email_confirm: true,
-      user_metadata: {
-        full_name: fullName,
-        birth_date: birthDate,
-        phone,
+      options: {
+        data: { full_name: fullName, birth_date: birthDate, phone },
       },
     });
 
@@ -81,51 +81,13 @@ export async function POST(req: Request) {
         source: "signup",
       });
 
-      await prisma.$transaction([
-        prisma.customerEvent.updateMany({
-          where: {
-            email,
-            userId: null,
-          },
-          data: { userId },
-        }),
-        prisma.payment.updateMany({
-          where: {
-            customerEmail: email,
-            userId: null,
-          },
-          data: { userId },
-        }),
-        prisma.pass.updateMany({
-          where: {
-            customerEmail: email,
-            userId: null,
-          },
-          data: {
-            userId,
-            profileId: userId,
-          },
-        }),
-        prisma.creditLedger.updateMany({
-          where: {
-            customerEmail: email,
-            userId: null,
-          },
-          data: { userId },
-        }),
-        prisma.emailLog.updateMany({
-          where: {
-            customerEmail: email,
-            userId: null,
-          },
-          data: { userId },
-        }),
-      ]);
+      // Purchases are linked only after verified email ownership in a
+      // separate, transaction-backed claim flow. Do not match by raw signup input.
     } catch (profileErr: any) {
       console.error("signup profile sync warning:", profileErr?.message || profileErr);
     }
 
-    return NextResponse.json({ ok: true, userId }, { status: 200 });
+    return NextResponse.json({ ok: true, verificationRequired: !created.session }, { status: 200 });
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message || "Server error" },
