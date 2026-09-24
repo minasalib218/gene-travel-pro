@@ -44,8 +44,8 @@ export async function POST(req: NextRequest) {
     });
 
     const body = (await req.json().catch(() => ({}))) as EventBody;
-    sessionId = ensureSessionId(body.sessionId || sessionId);
-    anonymousId = ensureSessionId(body.anonymousId || anonymousId);
+    // Do not let request JSON select another visitor's analytics identity.
+    // The server-issued cookies are the sole identity source.
 
     if (!body.eventName) {
       const response = NextResponse.json({ ok: true });
@@ -81,6 +81,13 @@ export async function POST(req: NextRequest) {
     const supabase = createRouteClient();
     const { data } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
     const canonicalEventName = normalizeAnalyticsEventName(body.eventName);
+    const serverOnlyEvents = new Set([
+      "payment_failed", "credit_purchase_completed", "credit_purchase_failed",
+      "account_created", "user_signed_in",
+    ]);
+    if (serverOnlyEvents.has(canonicalEventName)) {
+      return NextResponse.json({ ok: false, code: "SERVER_EVENT_ONLY" }, { status: 403 });
+    }
     const metadata = sanitizeAnalyticsMetadata({
       ...(body.metadata ?? {}),
       ...(ANALYTICS_EVENT_ALIASES[body.eventName] ? { legacyEventName: body.eventName } : {}),
