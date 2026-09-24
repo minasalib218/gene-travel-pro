@@ -35,7 +35,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, code: "TOKEN_USED" }, { status: 409 });
     }
 
-    /    // Claim and pass creation must commit together. The conditional update
+    // Claim and pass creation must commit together. The conditional update
     // allows only one concurrent request to claim this token.
     const pass = await prisma.$transaction(async (tx) => {
       const claimed = await tx.activationToken.updateMany({
@@ -65,7 +65,7 @@ export async function POST(req: Request) {
 
     if (!pass) return NextResponse.json({ ok: false, code: "TOKEN_USED" }, { status: 409 });
     return NextResponse.json({ ok: true, pass });
-atch (e: any) {
+  } catch (e: any) {
     console.error("passes/claim error:", e);
     return NextResponse.json(
       { ok: false, code: "INTERNAL_ERROR", message: "Unable to claim this pass right now." },
