@@ -1,8 +1,5 @@
 import { NextResponse } from "next/server";
 import { createRouteClient } from "@/lib/supabase/server";
-import { prisma } from "@/lib/prisma";
-import { ensureUserProfile } from "@/lib/profile/ensureUserProfile";
-import { mergeGuestDataIntoUser, readGuestIdentityFromCookieHeader } from "@/lib/profile/guestMerge";
 
 function cleanPhone(phone: string) {
   return phone.replace(/\s+/g, "");
@@ -71,22 +68,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const userId = created.user.id;
-
-    try {
-      await ensureUserProfile(created.user, "PROFILE_CREATED");
-      await mergeGuestDataIntoUser({
-        userId,
-        ...readGuestIdentityFromCookieHeader(req.headers.get("cookie")),
-        source: "signup",
-      });
-
-      // Purchases are linked only after verified email ownership in a
-      // separate, transaction-backed claim flow. Do not match by raw signup input.
-    } catch (profileErr: any) {
-      console.error("signup profile sync warning:", profileErr?.message || profileErr);
-    }
-
+    // Supabase may return an obfuscated user for an already registered email.
+    // Never provision a profile or claim email-linked records at signup.
     return NextResponse.json({ ok: true, verificationRequired: !created.session }, { status: 200 });
   } catch (err: any) {
     return NextResponse.json(
