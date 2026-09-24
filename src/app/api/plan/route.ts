@@ -15,7 +15,8 @@ export async function POST(req: NextRequest) {
 
     const raw = await req.text();
     if (raw.length > 64_000) return NextResponse.json({ error: "Plan input too large" }, { status: 413 });
-    const body = JSON.parse(raw);
+    const body = await Promise.resolve().then(() => JSON.parse(raw || "null")).catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
 
     const {
       destination,
