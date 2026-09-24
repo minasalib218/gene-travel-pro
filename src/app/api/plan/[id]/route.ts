@@ -57,7 +57,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
     const raw = await req.text();
     if (raw.length > 256_000) return NextResponse.json({ ok: false, code: "PAYLOAD_TOO_LARGE" }, { status: 413 });
-    const body = (JSON.parse(raw || "null")) as { payload?: RecommendationPayload; expectedVersion?: number } | null;
+    const body = (await Promise.resolve().then(() => JSON.parse(raw || "null")).catch(() => null)) as { payload?: RecommendationPayload; expectedVersion?: number } | null;
     const payload = body?.payload;
 
     if (!payload || !payload.inputs || typeof payload.inputs.destination !== "string" ||
