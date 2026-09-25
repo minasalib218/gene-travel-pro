@@ -33,6 +33,7 @@ import {
 import { imageUploadConstraintsLabel } from "@/lib/content/shared";
 import { prepareImageForUpload } from "@/lib/client/prepareImageForUpload";
 import { generatePublicPlanHtml } from "@/lib/ready-plan-public-view";
+import GeneLogo from "@/components/brand/GeneLogo";
 
 type PlanRecord = {
   id: string;
@@ -722,7 +723,7 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
         <div className="relative p-5 md:p-8 xl:px-10 xl:pb-8 xl:pt-9 2xl:px-12">
           <div className="flex items-center justify-between gap-4 text-white">
             <div className="flex items-center gap-3">
-              <img src="/images/logo.png" alt="Gene Travel" className="h-auto w-[132px] object-contain md:w-[190px]" />
+              <GeneLogo imageClassName="h-auto w-[132px] object-contain md:w-[190px]" priority />
             </div>
             <div className="flex items-center gap-4 text-sm text-white/82">
               <div className="inline-flex items-center gap-2">

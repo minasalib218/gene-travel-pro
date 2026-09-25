@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useLanguage } from "@/components/i18n/LanguageProvider";
+import GeneLogo from "@/components/brand/GeneLogo";
 import { trackAnalyticsEvent } from "@/lib/analytics";
 
 const ORANGE = "#ff7a00";
@@ -102,7 +103,7 @@ async function completePendingAction(defaultReturnPath: string) {
 async function completePendingActionWithTimeout(defaultReturnPath: string) {
   return Promise.race([
     completePendingAction(defaultReturnPath),
-    new Promise<string>((resolve) => window.setTimeout(() => resolve(defaultReturnPath), 1200)),
+    new Promise<string>((resolve) => window.setTimeout(() => resolve(defaultReturnPath), 650)),
   ]);
 }
 
@@ -118,11 +119,15 @@ function SignInInner() {
   const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   useEffect(() => {
     setEmail("");
     setPassword("");
-  }, []);
+    const authError = search.get("error");
+    if (authError === "profile_unavailable") setErr("Your account is verified, but your profile could not be loaded. Please try again.");
+    if (authError === "auth_callback_failed") setErr("Google verification could not be completed. Please try again.");
+  }, [search]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -145,12 +150,8 @@ function SignInInner() {
         credentials: "same-origin",
         cache: "no-store",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: email.trim().toLowerCase(),
-          password,
-        }),
+        body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
       });
-
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         setErr(data?.error || "Could not sign in.");
@@ -166,6 +167,12 @@ function SignInInner() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function signInWithGoogle() {
+    setErr(null);
+    setGoogleLoading(true);
+    window.location.assign(`/api/auth/google?next=${encodeURIComponent(next)}`);
   }
 
   return (
@@ -186,7 +193,7 @@ function SignInInner() {
       <header className="sticky top-0 z-40 border-b border-white/10 bg-black/25 backdrop-blur-xl">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-4">
           <Link href="/" className="flex items-center">
-            <Image src="/images/logo.png" alt="Gene Travel" width={200} height={200} />
+            <GeneLogo imageClassName="h-auto w-[150px] sm:w-[180px]" priority />
           </Link>
 
           <nav className="flex items-center gap-6 text-sm text-white/75">
@@ -243,9 +250,20 @@ function SignInInner() {
             </div>
           ) : null}
 
-          <form onSubmit={onSubmit} autoComplete="off" className="mt-6 space-y-4">
-            <input type="text" name="gene-fake-user" autoComplete="username" className="hidden" tabIndex={-1} />
-            <input type="password" name="gene-fake-pass" autoComplete="new-password" className="hidden" tabIndex={-1} />
+          <button
+            type="button"
+            onClick={signInWithGoogle}
+            disabled={loading || googleLoading}
+            className="mt-6 flex min-h-12 w-full items-center justify-center gap-3 rounded-full border border-white/16 bg-white/8 px-5 text-sm font-semibold text-white transition hover:border-white/30 hover:bg-white/12 disabled:opacity-60"
+          >
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white font-bold text-[#4285f4]">G</span>
+            {googleLoading ? "Opening Google..." : "Continue with Google"}
+          </button>
+          <div className="my-5 flex items-center gap-3 text-[11px] uppercase tracking-[0.18em] text-white/38">
+            <span className="h-px flex-1 bg-white/10" />or use email<span className="h-px flex-1 bg-white/10" />
+          </div>
+
+          <form onSubmit={onSubmit} autoComplete="on" className="space-y-4">
             <div>
               <label className="block text-xs uppercase tracking-[0.22em] text-white/55">
                 {t("signin.email", "Email")}
@@ -254,11 +272,11 @@ function SignInInner() {
                 <input
                   type="email"
                   id="signin-email"
-                  name="gene-signin-email"
+                  name="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full bg-transparent px-4 py-3 text-sm text-white/90 outline-none"
-                  autoComplete="off"
+                  autoComplete="email"
                   autoCapitalize="none"
                   spellCheck={false}
                   data-form-type="other"
@@ -275,11 +293,11 @@ function SignInInner() {
                 <input
                   type="password"
                   id="signin-password"
-                  name="gene-signin-password"
+                  name="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full bg-transparent px-4 py-3 text-sm text-white/90 outline-none"
-                  autoComplete="off"
+                  autoComplete="current-password"
                   data-form-type="other"
                   data-lpignore="true"
                 />

@@ -963,6 +963,7 @@ function MobileTimelineItem({
   bookingHref?: string;
   Icon: ReturnType<typeof itemIcon>;
 }) {
+  const visibleStatus = item.status?.trim() && !/pending/i.test(item.status) ? item.status.trim() : "";
   return (
     <div className="grid h-[132px] grid-cols-[96px_minmax(0,1fr)] overflow-hidden rounded-[12px] border border-black/8 bg-white/78 text-[#1f1f1f] shadow-[0_8px_24px_rgba(0,0,0,0.08)] min-[390px]:h-[128px] min-[390px]:grid-cols-[112px_minmax(0,1fr)] min-[430px]:grid-cols-[120px_minmax(0,1fr)] min-[520px]:h-[120px] min-[520px]:grid-cols-[180px_minmax(0,1fr)]">
       <div className="relative h-full w-full shrink-0">
@@ -977,18 +978,14 @@ function MobileTimelineItem({
         </h3>
         <div className="mt-1.5 flex min-w-0 flex-wrap gap-1 overflow-hidden pr-[70px] min-[390px]:gap-1.5 min-[390px]:pr-[78px] min-[520px]:pr-[100px]">
           <span className="max-w-full truncate rounded-[5px] bg-[#ff7a00] px-1.5 py-0.5 text-[9px] font-bold leading-4 text-white min-[390px]:px-2 min-[390px]:text-[10px] min-[520px]:rounded-[6px] min-[520px]:text-[12px]">{item.badge || prettyType(item.type)}</span>
-          {item.status ? <span className="hidden max-w-full truncate rounded-[5px] bg-black/5 px-1.5 py-0.5 text-[9px] font-bold leading-4 text-black/60 min-[430px]:inline min-[520px]:rounded-[6px] min-[520px]:px-2 min-[520px]:text-[12px]">{item.status}</span> : null}
+          {visibleStatus ? <span className="hidden max-w-full truncate rounded-[5px] bg-black/5 px-1.5 py-0.5 text-[9px] font-bold leading-4 text-black/60 min-[430px]:inline min-[520px]:rounded-[6px] min-[520px]:px-2 min-[520px]:text-[12px]">{visibleStatus}</span> : null}
         </div>
         <p className="mt-1.5 line-clamp-3 pr-[4px] text-[11.5px] font-medium leading-[15px] text-black/72 min-[390px]:line-clamp-2 min-[390px]:text-[12.5px] min-[390px]:leading-[17px] min-[520px]:text-[13px] min-[520px]:leading-5">{item.description}</p>
         {bookingHref ? (
           <a href={bookingHref} target="_blank" rel="noopener noreferrer sponsored" className="absolute right-2 top-3 inline-flex h-8 min-w-[66px] items-center justify-center rounded-[8px] border border-[#ff7a00] bg-transparent px-1.5 text-[10.5px] font-bold text-[#ff7a00] transition active:bg-[#ff7a00] active:text-white min-[390px]:min-w-[76px] min-[390px]:text-[11px] min-[520px]:right-4 min-[520px]:min-w-[88px] min-[520px]:px-2 min-[520px]:text-[12px]">
             Book Now
           </a>
-        ) : (
-          <button type="button" disabled className="absolute right-2 top-3 inline-flex h-8 min-w-[66px] items-center justify-center rounded-[8px] border border-black/10 bg-black/5 px-1.5 text-[9px] font-bold text-black/35 min-[390px]:min-w-[76px] min-[390px]:text-[9.5px] min-[520px]:right-4 min-[520px]:min-w-[88px] min-[520px]:px-2 min-[520px]:text-[10px]">
-            Booking unavailable
-          </button>
-        )}
+        ) : null}
         <div className="absolute bottom-3 right-2 text-right min-[520px]:right-4">
           {item.price ? <div className="text-[13px] font-extrabold leading-none min-[390px]:text-[14px] min-[520px]:text-[16px]">{item.price}</div> : null}
           {item.people ? <div className="mt-1 text-[10.5px] leading-3 text-black/55 min-[390px]:text-[11px] min-[520px]:text-[12px]">{item.people}</div> : null}
@@ -1142,6 +1139,7 @@ function TimelinePlanCard({
   bookingHref?: string;
   Icon: ReturnType<typeof itemIcon>;
 }) {
+  const visibleStatus = item.status?.trim() && !/pending/i.test(item.status) ? item.status.trim() : "";
   const body = (
     <div className="grid gap-0 overflow-hidden rounded-[12px] border border-black/8 bg-white/75 shadow-[0_10px_34px_rgba(0,0,0,0.06)] md:min-h-[120px] md:grid-cols-[160px_minmax(0,1fr)_128px] md:items-stretch">
       <div className="relative overflow-visible">
@@ -1155,9 +1153,9 @@ function TimelinePlanCard({
           <span className="rounded-[6px] bg-[#ff7a00] px-2.5 py-1 text-[12px] font-semibold text-white">
             {item.badge || prettyType(item.type)}
           </span>
-          {item.status ? (
+          {visibleStatus ? (
             <span className="rounded-[6px] bg-black/5 px-2.5 py-1 text-[12px] font-semibold text-black/70">
-              {item.status}
+              {visibleStatus}
             </span>
           ) : null}
         </div>
@@ -1176,15 +1174,7 @@ function TimelinePlanCard({
           >
             {BOOK_NOW_LABEL}
           </a>
-        ) : (
-          <button
-            type="button"
-            disabled
-            className="inline-flex h-8 min-w-[142px] items-center justify-center rounded-[8px] border border-black/10 bg-black/5 px-[14px] text-[12px] font-semibold text-black/35"
-          >
-            Booking unavailable
-          </button>
-        )}
+        ) : null}
         <div>
           {item.price ? <div className="text-[16px] font-bold leading-none">{item.price}</div> : null}
           {item.people ? <div className="mt-2 text-[12px] text-black/60">{item.people}</div> : null}

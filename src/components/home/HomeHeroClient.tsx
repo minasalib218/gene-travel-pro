@@ -18,6 +18,7 @@ import { useLanguage } from "@/components/i18n/LanguageProvider";
 import LanguageMenu from "@/components/i18n/LanguageMenu";
 import { trackLead, trackSelectItem } from "@/lib/analytics";
 import { getDestinationTripStyleLabel, type DestinationTripStyleValue } from "@/lib/content/destinations";
+import GeneLogo from "@/components/brand/GeneLogo";
 
 export type HomeSlide = {
   id?: string;
@@ -424,7 +425,7 @@ export default function HomeHeroClient({
           <div className="relative px-[18px] pb-12 pt-4 md:px-10 md:pb-12 md:pt-5">
             <header className="flex items-center justify-between">
               <div className="flex items-center">
-                <Image src="/images/logo.png" alt="Gene Travel" width={200} height={200} className="h-auto w-[132px] md:w-[200px]" />
+                <GeneLogo imageClassName="h-auto w-[132px] md:w-[200px]" priority />
               </div>
 
               <div className="hidden items-center gap-6 lg:flex">
@@ -692,7 +693,7 @@ export default function HomeHeroClient({
             <footer className="mt-8 rounded-[28px] bg-[linear-gradient(180deg,#111a23_0%,#0a1118_100%)] px-5 py-8 text-white shadow-[0_20px_50px_rgba(11,16,22,0.24)] md:rounded-[34px] md:px-8 md:py-7">
               <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
                 <Link href="/" className="flex items-center">
-                  <Image src="/images/logo.png" alt="Gene Travel" width={190} height={190} className="h-auto w-[140px] sm:w-[165px] md:w-[190px]" />
+                  <GeneLogo imageClassName="h-auto w-[140px] sm:w-[165px] md:w-[190px]" />
                 </Link>
                 <nav className="flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-sm text-white/72">
                   <Link href="/profile" className="transition hover:text-white">About Us</Link>
@@ -1180,7 +1181,7 @@ function DestinationCard({ card }: { card: DestinationFeatureCard }) {
         ))}
       </div>
       {card.featured ? (
-        <div className="absolute right-3 top-3 rounded-full bg-[#ff9a1f] px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_8px_24px_rgba(255,122,0,0.28)] md:right-4 md:top-4 md:px-3 md:text-[10px] md:tracking-[0.16em]">
+        <div className="absolute right-3 top-[62px] rounded-full bg-[#ff9a1f] px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_8px_24px_rgba(255,122,0,0.28)] md:right-4 md:top-[68px] md:px-3 md:text-[10px] md:tracking-[0.16em]">
           Featured
         </div>
       ) : null}

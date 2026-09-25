@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { getSupabaseAnonKey, getSupabaseUrl } from "@/lib/env";
-import { ensureUserProfile } from "@/lib/profile/ensureUserProfile";
 
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(email.trim());
@@ -62,15 +61,6 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { ok: false, error: "Invalid email or password." },
         { status: 401 },
-      );
-    }
-
-    const profile = await ensureUserProfile(data.user, "SIGN_IN");
-    if (!profile) {
-      await supabase.auth.signOut().catch(() => undefined);
-      return NextResponse.json(
-        { ok: false, error: "Your account is temporarily unavailable. Please try again." },
-        { status: 503 },
       );
     }
 

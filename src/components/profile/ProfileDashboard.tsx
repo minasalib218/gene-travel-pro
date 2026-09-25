@@ -26,6 +26,7 @@ import ProfileMobileNav from "./ProfileMobileNav";
 import ProfileSidebarNav from "./ProfileSidebarNav";
 import GeneLogo from "@/components/brand/GeneLogo";
 import GlobalSearch from "@/components/search/GlobalSearch";
+import ProfileYearTools from "./ProfileYearTools";
 
 type Props = {
   data: any;
@@ -412,6 +413,13 @@ export default function ProfileDashboard({ data }: Props) {
                 </div>
               </GlassCard>
             </section>
+
+            <ProfileYearTools
+              confirmedTrips={confirmedTrips}
+              reminders={travelReminders}
+              favoritePlansCount={favoritePlans.length || savedReadyPlans.length}
+              favoriteDestinationsCount={favoriteDestinations.length}
+            />
 
             <section className="grid gap-5 xl:grid-cols-2">
               <GlassCard id="my-credits" className="scroll-mt-24 rounded-2xl p-5">

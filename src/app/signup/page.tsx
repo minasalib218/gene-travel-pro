@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { COUNTRIES } from "@/lib/countries";
 import { useLanguage } from "@/components/i18n/LanguageProvider";
 import { trackAnalyticsEvent, trackLead } from "@/lib/analytics";
+import GeneLogo from "@/components/brand/GeneLogo";
 
 const ORANGE = "#ff7a00";
 
@@ -209,7 +210,7 @@ function SignUpPageContent() {
       <header className="sticky top-0 z-40 border-b border-white/10 bg-black/25 backdrop-blur-xl">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-4">
           <Link href="/" className="flex items-center">
-            <Image src="/images/logo.png" alt="Gene Travel" width={200} height={200} />
+            <GeneLogo imageClassName="h-auto w-[150px] sm:w-[180px]" priority />
           </Link>
 
           <nav className="flex items-center gap-6 text-sm text-white/75">

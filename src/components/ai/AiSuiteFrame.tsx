@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useMemo } from "react";
 import { BarChart3, CalendarRange, CheckCircle2, CreditCard, Headphones, Sparkles } from "lucide-react";
+import GeneLogo from "@/components/brand/GeneLogo";
 
 type AiPageKey = "recommendation" | "dayByDay" | "analysis" | "booking" | "summary";
 
@@ -102,7 +103,7 @@ export default function AiSuiteFrame({ activePage, planId, children }: AiSuiteFr
           <aside className="hidden xl:block">
             <div className="sticky top-2 flex min-h-[calc(100vh-16px)] flex-col overflow-hidden rounded-[30px] border border-white/10 bg-black px-2.5 py-3 shadow-[0_24px_70px_rgba(0,0,0,0.34)]">
               <Link href="/" className="mx-1 flex h-[104px] items-center justify-center">
-                <Image src="/images/logo.png" alt="Gene Travel" width={84} height={84} />
+                <GeneLogo imageClassName="h-auto w-[84px]" />
               </Link>
 
               <nav className="mt-6 space-y-3.5">

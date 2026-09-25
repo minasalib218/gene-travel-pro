@@ -37,6 +37,21 @@ function highlightParts(title: string, query: string) {
   ];
 }
 
+function resultTypeLabel(type: string) {
+  const labels: Record<string, string> = {
+    "ready-plan": "Ready Plan",
+    ready_plan: "Ready Plan",
+    destination: "Destination",
+    offer: "Offer",
+    event: "Event",
+    trip: "My Trip",
+    favorite: "Favorite",
+    reminder: "Reminder",
+    booking: "Booking",
+  };
+  return labels[type] || type.replace(/[-_]/g, " ");
+}
+
 export default function GlobalSearch({
   scope = "public",
   placeholder = "Search destinations, plans, offers...",
@@ -163,15 +178,15 @@ export default function GlobalSearch({
                     index === activeIndex ? "bg-[#ff7a00]/14" : "hover:bg-white/[0.06]"
                   }`}
                 >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#ff7a00]/25 bg-[#ff7a00]/12 text-[10px] font-black uppercase tracking-[0.12em] text-[#ffbf82]">
-                    {result.type.slice(0, 2)}
+                  <span className="flex min-h-9 min-w-[72px] shrink-0 items-center justify-center rounded-xl border border-[#ff7a00]/25 bg-[#ff7a00]/12 px-2 text-[9px] font-black uppercase tracking-[0.08em] text-[#ffbf82]">
+                    {resultTypeLabel(result.type)}
                   </span>
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-semibold text-white">
                       {highlightParts(result.title, trimmed)}
                     </span>
                     <span className="mt-1 block truncate text-xs text-white/55">
-                      {result.subtitle || result.type}
+                      {result.subtitle || resultTypeLabel(result.type)}
                     </span>
                   </span>
                 </Link>

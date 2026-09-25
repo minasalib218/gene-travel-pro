@@ -32,6 +32,7 @@ import {
 import { getPlannerSuggestions } from "@/lib/travelPreferences";
 import { usePass } from "@/hooks/usePass";
 import { trackAnalyticsEvent, trackLead } from "@/lib/analytics";
+import GeneLogo from "@/components/brand/GeneLogo";
 
 type TravelType = "solo" | "couple" | "family" | "friends" | "business";
 type BudgetPer = "total" | "person";
@@ -1112,13 +1113,13 @@ export default function AIPlannerPage() {
       <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col px-3 py-4 md:px-8 md:py-6 lg:flex-row lg:gap-8 lg:px-12">
         <div className="mb-3 flex w-full justify-start lg:hidden">
           <Link href="/" className="flex items-center">
-            <img src="/images/logo.png" alt="Gene Travel" className="h-12 w-auto object-contain" />
+            <GeneLogo imageClassName="h-12 w-auto object-contain" priority />
           </Link>
         </div>
         <aside className="mb-4 w-full lg:mb-0 lg:max-w-[330px]">
           <div className="rounded-[24px] border border-white/10 bg-white/8 p-3.5 shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-xl md:rounded-[28px] md:p-5">
             <Link href="/" className="mb-5 hidden items-center lg:flex">
-              <img src="/images/logo.png" alt="Gene Travel" className="h-16 w-auto object-contain" />
+              <GeneLogo imageClassName="h-16 w-auto object-contain" />
             </Link>
             <p className="text-[10px] uppercase tracking-[0.22em] text-white/50 md:text-xs md:tracking-[0.28em]">
               Gene Travel Planner

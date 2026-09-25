@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import GeneLogo from "@/components/brand/GeneLogo";
 
 export function PolicyPageShell({
   eyebrow,
@@ -30,7 +31,7 @@ export function PolicyPageShell({
       <header className="sticky top-0 z-30 border-b border-white/10 bg-black/35 backdrop-blur-xl">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4">
           <Link href="/" className="flex items-center">
-            <Image src="/images/logo.png" alt="Gene Travel" width={180} height={180} />
+            <GeneLogo imageClassName="h-auto w-[180px]" priority />
           </Link>
           <Link
             href="/signup"
