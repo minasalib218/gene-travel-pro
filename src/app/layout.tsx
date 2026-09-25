@@ -60,6 +60,12 @@ export default function RootLayout({children}:{children:ReactNode}){
 })();`,
           }}
         />
+        <Script
+          id="getyourguide-analytics"
+          src="https://widget.getyourguide.com/dist/pa.umd.production.min.js"
+          strategy="afterInteractive"
+          data-gyg-partner-id="T1FCRGE"
+        />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={jsonLdScript({

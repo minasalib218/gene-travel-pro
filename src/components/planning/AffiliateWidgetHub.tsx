@@ -18,6 +18,7 @@ type WidgetDefinition = {
   description: string;
   icon: typeof Plane;
   src?: string;
+  provider?: "getyourguide";
 };
 
 const widgets: WidgetDefinition[] = [
@@ -51,10 +52,10 @@ const widgets: WidgetDefinition[] = [
   },
   {
     id: "activities",
-    label: "Activities & Trips",
-    description: "Discover tours, attractions, and day trips.",
+    label: "Tours & Activities",
+    description: "Discover live tours, attractions, tickets, and day trips from GetYourGuide.",
     icon: Sparkles,
-    src: process.env.NEXT_PUBLIC_TRAVELPAYOUTS_ACTIVITIES_WIDGET_URL,
+    provider: "getyourguide",
   },
   {
     id: "events",
@@ -85,7 +86,7 @@ function AffiliateWidget({ widget }: { widget: WidgetDefinition }) {
 
   useEffect(() => {
     const host = hostRef.current;
-    if (!host || !widget.src) return;
+    if (!host || !widget.src || widget.provider === "getyourguide") return;
 
     setFailed(false);
     host.replaceChildren();
@@ -99,6 +100,22 @@ function AffiliateWidget({ widget }: { widget: WidgetDefinition }) {
 
     return () => host.replaceChildren();
   }, [widget.id, widget.src]);
+
+  if (widget.provider === "getyourguide") {
+    return (
+      <div className="min-h-[360px] overflow-hidden rounded-2xl bg-white p-2 sm:p-4">
+        <div
+          data-gyg-href="https://widget.getyourguide.com/default/activities.frame"
+          data-gyg-locale-code="en-US"
+          data-gyg-widget="activities"
+          data-gyg-number-of-items="4"
+          data-gyg-partner-id="T1FCRGE"
+          data-gyg-q="tours and activities"
+          data-gyg-campaign="gene-widget-hub"
+        />
+      </div>
+    );
+  }
 
   if (!widget.src) {
     return (
@@ -128,6 +145,7 @@ function AffiliateWidget({ widget }: { widget: WidgetDefinition }) {
 export default function AffiliateWidgetHub() {
   const [activeId, setActiveId] = useState(widgets[0].id);
   const activeWidget = widgets.find((widget) => widget.id === activeId) || widgets[0];
+  const getYourGuideWidget = widgets.find((widget) => widget.provider === "getyourguide")!;
 
   return (
     <section className="mx-auto mt-6 w-full max-w-7xl px-3 pb-10 md:px-8 lg:px-12" aria-labelledby="trip-booking-tools">
@@ -172,7 +190,12 @@ export default function AffiliateWidgetHub() {
             <h3 className="text-lg font-semibold text-white">{activeWidget.label}</h3>
             <p className="mt-1 text-xs leading-5 text-white/55 md:text-sm">{activeWidget.description}</p>
           </div>
-          <AffiliateWidget key={activeWidget.id} widget={activeWidget} />
+          <div className={activeWidget.provider === "getyourguide" ? "block" : "hidden"}>
+            <AffiliateWidget widget={getYourGuideWidget} />
+          </div>
+          {activeWidget.provider !== "getyourguide" ? (
+            <AffiliateWidget key={activeWidget.id} widget={activeWidget} />
+          ) : null}
         </div>
       </div>
     </section>

@@ -13,7 +13,10 @@ export const offerInputSchema = z.object({
   startingPrice: z.string().trim().optional().nullable(),
   description: z.string().trim().optional().nullable(),
   discountBadge: z.string().trim().optional().nullable(),
-  expiresAt: z.string().trim().optional().nullable(),
+  expiresAt: z.string().trim().optional().nullable().refine(
+    (value) => !value || /^\d{4}-\d{2}-\d{2}$/.test(value),
+    "Expiry date must be a valid date"
+  ),
   featured: z.boolean().optional(),
   showOnHome: z.boolean().optional(),
   status: contentStatusSchema.optional(),
@@ -80,7 +83,7 @@ export function buildOfferLiveData(input: unknown) {
     startingPrice: normalizeOptionalString(parsed.startingPrice),
     description: normalizeOptionalString(parsed.description),
     discountBadge: normalizeOptionalString(parsed.discountBadge),
-    expiresAt: parsed.expiresAt ? new Date(parsed.expiresAt) : null,
+    expiresAt: parsed.expiresAt ? new Date(`${parsed.expiresAt}T23:59:59.999Z`) : null,
     featured: Boolean(parsed.featured),
     showOnHome: Boolean(parsed.showOnHome),
     status: parsed.status ?? "draft",

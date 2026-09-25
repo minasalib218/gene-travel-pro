@@ -18,6 +18,10 @@ export default function OfferEditorForm({
   const [message, setMessage] = useState("");
 
   async function save(status?: OfferLiveRecord["status"]) {
+    if (!draft.title.trim()) {
+      setMessage("Title is required before the offer can be saved.");
+      return;
+    }
     setSaving(true);
     setMessage("");
     try {
@@ -27,7 +31,7 @@ export default function OfferEditorForm({
         body: JSON.stringify({ ...draft, status: status ?? draft.status }),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data?.ok) throw new Error(data?.code || "SAVE_FAILED");
+      if (!response.ok || !data?.ok) throw new Error(data?.message || data?.code || "SAVE_FAILED");
       if (mode === "create") {
         router.push(`/admin/offers/${data.id}/edit`);
         return;
@@ -79,7 +83,7 @@ export default function OfferEditorForm({
         {message ? <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white/75">{message}</div> : null}
         <section className="rounded-[34px] border border-white/10 bg-white/[0.04] p-6 shadow-[0_24px_70px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
           <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Title"><input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} className="input" /></Field>
+            <Field label="Title"><input required value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} className="input" /></Field>
             <Field label="Slug"><input value={draft.slug} onChange={(e) => setDraft({ ...draft, slug: e.target.value })} className="input" /></Field>
             <Field label="Location"><input value={draft.location} onChange={(e) => setDraft({ ...draft, location: e.target.value })} className="input" /></Field>
             <Field label="Country"><input value={draft.country} onChange={(e) => setDraft({ ...draft, country: e.target.value })} className="input" /></Field>
