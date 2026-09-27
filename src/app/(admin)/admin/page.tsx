@@ -4,6 +4,7 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AdminStatCard } from "@/components/admin/AdminStatCard";
 import { AdminCard } from "@/components/admin/AdminCard";
 import { withExistingTable } from "@/lib/prisma-safe";
+import { getAdminAnalyticsSnapshot } from "@/lib/analytics-server";
 
 async function countActivePasses() {
   const rows = await prisma.$queryRaw<Array<{ count: bigint | number }>>`
@@ -50,6 +51,8 @@ export default async function AdminOverviewPage() {
   let affiliateClicks = 0;
   let topDestinations: Array<{ id: string; title: string; destination: string; updatedAt: Date }> = [];
   let topReadyPlans: Array<{ refId: string; _count: { refId: number } }> = [];
+  let todayPurchases = 0;
+  let todaySessions = 0;
 
   try {
     [
@@ -101,11 +104,23 @@ export default async function AdminOverviewPage() {
     console.error("AdminOverviewPage data error:", error);
   }
 
+  try {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todaySnapshot = await getAdminAnalyticsSnapshot({ dateFrom: startOfToday, dateTo: now });
+    visitors = Number(todaySnapshot.metrics.totalVisitors || 0);
+    affiliateClicks = Number(todaySnapshot.metrics.affiliateClicks || 0);
+    todayPurchases = Number(todaySnapshot.metrics.purchases || 0);
+    todaySessions = Number(todaySnapshot.metrics.uniqueSessions || 0);
+  } catch (error) {
+    console.error("AdminOverviewPage analytics error:", error);
+  }
+
   const revenue = Number(revenueResult._sum.amount || 0);
   const estimatedAiCost = Number(aiUsageResult._sum.estimatedCost || 0);
   const creditsUsed = Math.abs(Number(aiCreditsUsed._sum.amount || 0));
   const estimatedProfit = Math.max(revenue - estimatedAiCost, 0);
-  const conversionRate = visitors > 0 ? ((paidUsers / visitors) * 100).toFixed(1) : "0.0";
+  const conversionRate = todaySessions > 0 ? ((todayPurchases / todaySessions) * 100).toFixed(1) : "0.0";
 
   return (
     <div className="space-y-6">
@@ -135,12 +150,12 @@ export default async function AdminOverviewPage() {
             <div className="rounded-[24px] border border-white/10 bg-black/20 p-4">
               <div className="text-sm font-semibold text-white">Daily visitors</div>
               <div className="mt-2 text-3xl font-semibold text-white">{visitors}</div>
-              <div className="mt-2 text-sm text-white/60">Traffic events currently tracked.</div>
+              <div className="mt-2 text-sm text-white/60">Unique tracked visitors since midnight.</div>
             </div>
             <div className="rounded-[24px] border border-white/10 bg-black/20 p-4">
               <div className="text-sm font-semibold text-white">Conversion rate</div>
               <div className="mt-2 text-3xl font-semibold text-white">{conversionRate}%</div>
-              <div className="mt-2 text-sm text-white/60">Paid users vs tracked visitors.</div>
+              <div className="mt-2 text-sm text-white/60">Today&apos;s verified purchases vs unique sessions.</div>
             </div>
             <div className="rounded-[24px] border border-white/10 bg-black/20 p-4">
               <div className="text-sm font-semibold text-white">Affiliate clicks</div>
@@ -170,7 +185,7 @@ export default async function AdminOverviewPage() {
 
       <div className="grid gap-6 xl:grid-cols-2">
         <AdminCard>
-          <div className="text-sm font-semibold text-white">Most requested destinations</div>
+          <div className="text-sm font-semibold text-white">Recently updated published destinations</div>
           <div className="mt-4 space-y-3">
             {topDestinations.length === 0 ? (
               <div className="text-sm text-white/60">No published destinations yet.</div>

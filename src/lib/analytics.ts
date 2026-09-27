@@ -23,6 +23,7 @@ type AnalyticsMetadata = Record<string, unknown>;
 
 export type GeneAnalyticsEventName =
   | "page_view"
+  | "page_engagement"
   | "pricing_view"
   | "package_selected"
   | "checkout_started"
@@ -80,6 +81,8 @@ const ANONYMOUS_KEY = "gene:analytics:anonymous-id";
 const UTM_KEY = "gene:analytics:utm";
 const COOKIE_NAME = "gene_analytics_sid";
 const ANONYMOUS_COOKIE_NAME = "gene_analytics_aid";
+const SESSION_LAST_ACTIVE_KEY = "gene:analytics:session-last-active";
+const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
 const recentEvents = new Map<string, number>();
 
 function safeWindow() {
@@ -100,12 +103,16 @@ export function getAnalyticsSessionId() {
   if (!win) return "";
   try {
     const existing = win.localStorage.getItem(SESSION_KEY);
-    if (existing) {
+    const lastActive = Number(win.localStorage.getItem(SESSION_LAST_ACTIVE_KEY) || 0);
+    const now = Date.now();
+    if (existing && lastActive > 0 && now - lastActive < SESSION_TIMEOUT_MS) {
+      win.localStorage.setItem(SESSION_LAST_ACTIVE_KEY, String(now));
       ensureCookie(COOKIE_NAME, existing);
       return existing;
     }
-    const created = win.crypto?.randomUUID?.() ?? `sid_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    const created = win.crypto?.randomUUID?.() ?? `sid_${now}_${Math.random().toString(36).slice(2, 10)}`;
     win.localStorage.setItem(SESSION_KEY, created);
+    win.localStorage.setItem(SESSION_LAST_ACTIVE_KEY, String(now));
     ensureCookie(COOKIE_NAME, created);
     return created;
   } catch {
@@ -296,6 +303,19 @@ function dispatchVendorEvents(eventName: GeneAnalyticsEventName, metadata: Analy
 
 export function trackPageView(path?: string) {
   trackAnalyticsEvent("page_view", {}, { pagePath: path });
+}
+
+export function trackPageEngagement(path: string, durationMs: number) {
+  const safeDurationMs = Math.min(Math.max(Math.round(durationMs), 0), 30 * 60 * 1000);
+  if (safeDurationMs < 1000) return;
+  trackAnalyticsEvent(
+    "page_engagement",
+    {
+      durationMs: safeDurationMs,
+      durationSeconds: Math.round(safeDurationMs / 1000),
+    },
+    { pagePath: path, useBeacon: true },
+  );
 }
 
 export function trackSelectItem(

@@ -22,6 +22,9 @@ export default function AdminTrafficPage() {
     plannerCompletions: 0,
     bookingClicks: 0,
     revenue: 0,
+    revenueCurrency: "USD",
+    uniqueVisitors: 0,
+    uniqueSessions: 0,
   };
 
   return (
@@ -32,14 +35,18 @@ export default function AdminTrafficPage() {
         description="Track homepage interest, pricing engagement, planner starts, booking clicks, and country/source performance."
       />
 
-      <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-7">
+      <div className="text-xs uppercase tracking-[0.18em] text-white/45">{data?.window?.label || "Last 30 days"}</div>
+
+      <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-9">
+        <AdminStatCard label="Unique visitors" value={totals.uniqueVisitors} />
+        <AdminStatCard label="Sessions" value={totals.uniqueSessions} />
         <AdminStatCard label="Page views" value={totals.pageViews} />
         <AdminStatCard label="Pricing clicks" value={totals.pricingClicks} />
         <AdminStatCard label="Checkout clicks" value={totals.checkoutClicks} />
         <AdminStatCard label="Planner starts" value={totals.plannerStarts} />
         <AdminStatCard label="Planner complete" value={totals.plannerCompletions} />
         <AdminStatCard label="Booking clicks" value={totals.bookingClicks} />
-        <AdminStatCard label="Revenue" value={`$${Number(totals.revenue || 0).toFixed(0)}`} />
+        <AdminStatCard label="Revenue" value={totals.revenueCurrency === "USD" ? `$${Number(totals.revenue || 0).toFixed(0)}` : `${Number(totals.revenue || 0).toFixed(0)} ${totals.revenueCurrency}`} />
       </div>
 
       <AdminTable

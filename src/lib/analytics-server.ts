@@ -212,6 +212,26 @@ export async function recordAnalyticsEvent(input: AnalyticsInsertInput) {
   });
 }
 
+export async function linkAnalyticsSessionToUser(sessionId: string, userId: string) {
+  if (!sessionId || !userId) return;
+  try {
+    await prisma.$transaction([
+      prisma.analyticsEvent.updateMany({
+        where: { sessionId, userId: null },
+        data: { userId },
+      }),
+      prisma.analyticsSession.updateMany({
+        where: { id: sessionId, userId: null },
+        data: { userId },
+      }),
+    ]);
+  } catch (error) {
+    if (!isMissingTableError(error) && !isDatabaseUnavailableError(error)) {
+      console.error("analytics session ownership error:", error);
+    }
+  }
+}
+
 export async function recordFunnelEvent(input: {
   userId?: string | null;
   anonymousId?: string | null;
@@ -504,6 +524,12 @@ export async function getAdminAnalyticsSnapshot(args: {
         (SELECT COUNT(*)::int FROM filtered_events WHERE "eventName" IN ('booking_button_clicked', 'book_now_clicked', 'affiliate_redirect_clicked', 'booking_link_clicked')) AS "bookingClicks",
         (SELECT COUNT(*)::int FROM filtered_events WHERE "eventName" IN ('affiliate_redirect_clicked', 'booking_link_clicked')) AS "affiliateClicks",
         (SELECT COUNT(*)::int FROM filtered_events WHERE "eventName" IN ('payment_failed', 'credit_purchase_failed')) AS "paymentFailures",
+        (SELECT COALESCE(AVG(
+          CASE
+            WHEN (metadata->>'durationSeconds') ~ '^[0-9]+$' THEN (metadata->>'durationSeconds')::int
+            ELSE NULL
+          END
+        ), 0)::float FROM filtered_events WHERE "eventName" = 'page_engagement') AS "averagePageTime",
         (SELECT COALESCE(AVG(EXTRACT(EPOCH FROM ("lastSeenAt" - "startedAt"))), 0)::float FROM filtered_sessions) AS "averageSessionTime",
         (SELECT CASE WHEN COUNT(*) > 0 THEN (COUNT(*) FILTER (WHERE "pageViews" <= 1)::float / COUNT(*)::float) * 100 ELSE 0 END FROM filtered_sessions) AS "bounceRate"
     `,
@@ -525,6 +551,7 @@ export async function getAdminAnalyticsSnapshot(args: {
     bookingClicks: 0,
     affiliateClicks: 0,
     paymentFailures: 0,
+    averagePageTime: 0,
     averageSessionTime: 0,
     bounceRate: 0,
   };
@@ -533,18 +560,25 @@ export async function getAdminAnalyticsSnapshot(args: {
     await Promise.all([
       prisma.$queryRaw<Array<{ day: string; value: number }>>(
         Prisma.sql`
-          SELECT TO_CHAR(DATE_TRUNC('day', "createdAt"), 'YYYY-MM-DD') AS day, COUNT(*)::int AS value
+          SELECT TO_CHAR(DATE_TRUNC('day', "createdAt"), 'YYYY-MM-DD') AS day,
+                 COUNT(DISTINCT COALESCE("userId", "anonymousId", "sessionId"))::int AS value
           FROM analytics_events
           WHERE "createdAt" >= ${args.dateFrom} AND "createdAt" < ${args.dateTo} AND "eventName" = 'page_view'
+            AND (${country}::text IS NULL OR country = ${country})
+            AND (${device}::text IS NULL OR "deviceType" = ${device})
+            AND (${source}::text IS NULL OR "utmSource" = ${source} OR metadata->>'utm_source' = ${source} OR metadata->>'source' = ${source})
           GROUP BY 1
           ORDER BY 1 ASC
         `,
       ).catch((error) => (isMissingTableError(error) ? [] : Promise.reject(error))),
       prisma.$queryRaw<Array<{ label: string; value: number }>>(
         Prisma.sql`
-          SELECT COALESCE(country, 'Unknown') AS label, COUNT(*)::int AS value
+          SELECT COALESCE(country, 'Unknown') AS label,
+                 COUNT(DISTINCT COALESCE("userId", "anonymousId", "sessionId"))::int AS value
           FROM analytics_events
-          WHERE "createdAt" >= ${args.dateFrom} AND "createdAt" < ${args.dateTo}
+          WHERE "createdAt" >= ${args.dateFrom} AND "createdAt" < ${args.dateTo} AND "eventName" = 'page_view'
+            AND (${device}::text IS NULL OR "deviceType" = ${device})
+            AND (${source}::text IS NULL OR "utmSource" = ${source} OR metadata->>'utm_source' = ${source} OR metadata->>'source' = ${source})
           GROUP BY 1
           ORDER BY value DESC
           LIMIT 10
@@ -554,7 +588,10 @@ export async function getAdminAnalyticsSnapshot(args: {
         Prisma.sql`
           SELECT COALESCE("pagePath", '/') AS label, COUNT(*)::int AS value
           FROM analytics_events
-          WHERE "createdAt" >= ${args.dateFrom} AND "createdAt" < ${args.dateTo}
+          WHERE "createdAt" >= ${args.dateFrom} AND "createdAt" < ${args.dateTo} AND "eventName" = 'page_view'
+            AND (${country}::text IS NULL OR country = ${country})
+            AND (${device}::text IS NULL OR "deviceType" = ${device})
+            AND (${source}::text IS NULL OR "utmSource" = ${source} OR metadata->>'utm_source' = ${source} OR metadata->>'source' = ${source})
           GROUP BY 1
           ORDER BY value DESC
           LIMIT 10
@@ -562,9 +599,12 @@ export async function getAdminAnalyticsSnapshot(args: {
       ).catch((error) => (isMissingTableError(error) ? [] : Promise.reject(error))),
       prisma.$queryRaw<Array<{ label: string; value: number }>>(
         Prisma.sql`
-          SELECT COALESCE(NULLIF(referrer, ''), 'Direct') AS label, COUNT(*)::int AS value
+          SELECT COALESCE(NULLIF(referrer, ''), 'Direct') AS label, COUNT(DISTINCT "sessionId")::int AS value
           FROM analytics_events
-          WHERE "createdAt" >= ${args.dateFrom} AND "createdAt" < ${args.dateTo}
+          WHERE "createdAt" >= ${args.dateFrom} AND "createdAt" < ${args.dateTo} AND "eventName" = 'page_view'
+            AND (${country}::text IS NULL OR country = ${country})
+            AND (${device}::text IS NULL OR "deviceType" = ${device})
+            AND (${source}::text IS NULL OR "utmSource" = ${source} OR metadata->>'utm_source' = ${source} OR metadata->>'source' = ${source})
           GROUP BY 1
           ORDER BY value DESC
           LIMIT 10
@@ -640,9 +680,12 @@ export async function getAdminAnalyticsSnapshot(args: {
       ).catch((error) => (isMissingTableError(error) ? [] : Promise.reject(error))),
       prisma.$queryRaw<Array<{ label: string; value: number }>>(
         Prisma.sql`
-          SELECT COALESCE("deviceType", 'unknown') AS label, COUNT(*)::int AS value
+          SELECT COALESCE("deviceType", 'unknown') AS label,
+                 COUNT(DISTINCT COALESCE("userId", "anonymousId", "sessionId"))::int AS value
           FROM analytics_events
-          WHERE "createdAt" >= ${args.dateFrom} AND "createdAt" < ${args.dateTo}
+          WHERE "createdAt" >= ${args.dateFrom} AND "createdAt" < ${args.dateTo} AND "eventName" = 'page_view'
+            AND (${country}::text IS NULL OR country = ${country})
+            AND (${source}::text IS NULL OR "utmSource" = ${source} OR metadata->>'utm_source' = ${source} OR metadata->>'source' = ${source})
           GROUP BY 1
           ORDER BY value DESC
         `,
@@ -665,6 +708,7 @@ export async function getAdminAnalyticsSnapshot(args: {
   const bookingClickRate = base.uniqueSessions > 0 ? (base.bookingClicks / base.uniqueSessions) * 100 : 0;
   const bounceRate = Number(base.bounceRate || 0);
   const averageSessionTime = Math.max(0, Math.round(Number(base.averageSessionTime || 0)));
+  const averagePageTime = Math.max(0, Math.round(Number(base.averagePageTime || 0)));
 
   return {
     metrics: {
@@ -675,6 +719,7 @@ export async function getAdminAnalyticsSnapshot(args: {
       bookingClickRate,
       bounceRate,
       averageSessionTime,
+      averagePageTime,
     },
     visitorsByDay,
     visitorsByCountry,

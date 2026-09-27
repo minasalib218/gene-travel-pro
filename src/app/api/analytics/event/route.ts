@@ -4,6 +4,7 @@ import {
   ANALYTICS_ANONYMOUS_COOKIE,
   ANALYTICS_SESSION_COOKIE,
   getAnalyticsLocation,
+  linkAnalyticsSessionToUser,
   parseUserAgent,
   recordAnalyticsEvent,
   recordConversionEvent,
@@ -80,6 +81,9 @@ export async function POST(req: NextRequest) {
 
     const supabase = createRouteClient();
     const { data } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
+    if (data?.user?.id) {
+      await linkAnalyticsSessionToUser(sessionId, data.user.id);
+    }
     const canonicalEventName = normalizeAnalyticsEventName(body.eventName);
     const metadata = sanitizeAnalyticsMetadata({
       ...(body.metadata ?? {}),

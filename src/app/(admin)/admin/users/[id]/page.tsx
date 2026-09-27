@@ -33,6 +33,8 @@ export default async function AdminUserDetailPage({ params }: { params: { id: st
     activity,
     analyticsEvents,
     travelDocuments,
+    analyticsSessions,
+    pageStats,
   ] = await Promise.all([
     withExistingTable("favorite_plans", () => prisma.favoritePlan.findMany({ where: { userId: params.id }, orderBy: { createdAt: "desc" }, take: 10 }), []),
     withExistingTable("favorite_destinations", () => prisma.favoriteDestination.findMany({ where: { userId: params.id }, orderBy: { createdAt: "desc" }, take: 10 }), []),
@@ -53,6 +55,33 @@ export default async function AdminUserDetailPage({ params }: { params: { id: st
       [],
     ),
     withExistingTable("travel_documents", () => prisma.travelDocument.findMany({ where: { userId: params.id, status: { not: "DELETED" } }, orderBy: { createdAt: "desc" }, take: 10 }), []),
+    withExistingTable(
+      "analytics_sessions",
+      () => prisma.analyticsSession.findMany({ where: { userId: params.id }, orderBy: { startedAt: "asc" }, take: 100 }),
+      [],
+    ),
+    withExistingTable<Array<{ pagePath: string; visits: number; activeSeconds: number }>>(
+      "analytics_events",
+      () => prisma.$queryRaw`
+        SELECT
+          COALESCE("pagePath", '/') AS "pagePath",
+          COUNT(*) FILTER (WHERE "eventName" = 'page_view')::int AS visits,
+          COALESCE(SUM(
+            CASE
+              WHEN "eventName" = 'page_engagement' AND (metadata->>'durationSeconds') ~ '^[0-9]+$'
+              THEN (metadata->>'durationSeconds')::int
+              ELSE 0
+            END
+          ), 0)::int AS "activeSeconds"
+        FROM analytics_events
+        WHERE "userId" = ${params.id}
+          AND "eventName" IN ('page_view', 'page_engagement')
+        GROUP BY COALESCE("pagePath", '/')
+        ORDER BY "activeSeconds" DESC, visits DESC
+        LIMIT 50
+      `,
+      [],
+    ),
   ]);
 
   const activePass = profile.passes.find((pass) => pass.status === "ACTIVE") ?? profile.passes[0] ?? null;
@@ -82,8 +111,21 @@ export default async function AdminUserDetailPage({ params }: { params: { id: st
     .slice(0, 30);
   const bookingClickTotal = analyticsEvents.filter((event) => ["booking_link_clicked", "affiliate_redirect_clicked", "booking_button_clicked", "book_now_clicked"].includes(event.eventName)).length + bookingClicks.length;
   const lastActive = meaningfulTimeline[0]?.createdAt ?? profile.updatedAt;
-  const acquisitionEvent = analyticsEvents.find((event) => event.utmSource || (event.metadata as any)?.utm_source || (event.metadata as any)?.source);
-  const primaryAcquisitionSource = acquisitionEvent?.utmSource || (acquisitionEvent?.metadata as any)?.utm_source || (acquisitionEvent?.metadata as any)?.source || "Unknown";
+  const firstSession = analyticsSessions[0] ?? null;
+  const acquisitionEvent = [...analyticsEvents].reverse().find((event) => event.utmSource || (event.metadata as any)?.utm_source || (event.metadata as any)?.source || event.referrer);
+  const referrerSource = firstSession?.referrer || acquisitionEvent?.referrer || null;
+  const primaryAcquisitionSource = firstSession?.utmSource || acquisitionEvent?.utmSource || (acquisitionEvent?.metadata as any)?.utm_source || (acquisitionEvent?.metadata as any)?.source || referrerSource || "Direct";
+  const totalActiveSeconds = pageStats.reduce((sum, page) => sum + Number(page.activeSeconds || 0), 0);
+
+  function formatDuration(totalSeconds: number) {
+    const seconds = Math.max(0, Math.round(totalSeconds));
+    if (seconds < 60) return `${seconds}s`;
+    const minutes = Math.floor(seconds / 60);
+    const remainder = seconds % 60;
+    if (minutes < 60) return `${minutes}m ${remainder}s`;
+    const hours = Math.floor(minutes / 60);
+    return `${hours}h ${minutes % 60}m`;
+  }
 
   return (
     <div className="space-y-6">
@@ -108,6 +150,8 @@ export default async function AdminUserDetailPage({ params }: { params: { id: st
             <div>Revenue/LTV: {revenue.toFixed(2)} {successfulPayments[0]?.currency || "USD"}</div>
             <div>Last active: {new Date(lastActive).toLocaleString()}</div>
             <div>Primary source: {primaryAcquisitionSource}</div>
+            <div>Tracked sessions: {analyticsSessions.length}</div>
+            <div>Active page time: {formatDuration(totalActiveSeconds)}</div>
           </div>
         </AdminCard>
         <AdminCard>
@@ -125,6 +169,22 @@ export default async function AdminUserDetailPage({ params }: { params: { id: st
           </div>
         </AdminCard>
       </div>
+
+      <AdminCard>
+        <div className="text-sm font-semibold text-white">Pages visited and active time</div>
+        <div className="mt-2 text-xs leading-5 text-white/45">
+          Active time counts only while the page is visible. Older visits made before page-time tracking was enabled show visits without duration.
+        </div>
+        <div className="mt-4 space-y-3">
+          {pageStats.length === 0 ? <div className="text-sm text-white/60">No page activity recorded yet.</div> : pageStats.map((page) => (
+            <div key={page.pagePath} className="grid gap-2 rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/70 sm:grid-cols-[minmax(0,1fr)_90px_110px] sm:items-center">
+              <div className="break-all font-medium text-white">{page.pagePath}</div>
+              <div>{Number(page.visits || 0)} visits</div>
+              <div>{formatDuration(Number(page.activeSeconds || 0))}</div>
+            </div>
+          ))}
+        </div>
+      </AdminCard>
 
       <div className="grid gap-6 xl:grid-cols-4">
         <AdminCard>

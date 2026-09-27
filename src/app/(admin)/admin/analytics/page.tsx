@@ -158,6 +158,7 @@ export default async function AdminAnalyticsPage({
         <MetricCard label="Booking Click Rate" value={percent(metrics.bookingClickRate)} note={`${metrics.bookingClicks.toLocaleString()} booking CTA clicks`} />
         <MetricCard label="Single-page Sessions" value={percent(metrics.bounceRate)} note="Real sessions with one page view" />
         <MetricCard label="Avg Session Time" value={`${metrics.averageSessionTime}s`} note={`${metrics.affiliateClicks.toLocaleString()} affiliate redirects • ${metrics.paymentFailures.toLocaleString()} payment failures`} />
+        <MetricCard label="Avg Active Page Time" value={`${metrics.averagePageTime}s`} note="Measured only while the page is visible" />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-3">

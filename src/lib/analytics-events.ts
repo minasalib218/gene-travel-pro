@@ -81,6 +81,7 @@ const ALLOWED_ANALYTICS_EVENTS = new Set([
   "destination_plan_started",
   "event_viewed",
   "page_view",
+  "page_engagement",
   "page_viewed",
   "navigation_clicked",
   "search_performed",
