@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import Script from "next/script";
 import { loadAnalyticsConfig } from "@/lib/analytics/config-client";
 
+const FALLBACK_GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || "G-EP53JWYNY2";
+let activeGaMeasurementId = FALLBACK_GA_MEASUREMENT_ID;
+
 declare global {
   interface Window {
     dataLayer?: unknown[];
@@ -21,9 +24,8 @@ function callGtag(...args: any[]) {
 }
 
 export function trackGaPageView(path: string) {
-  const measurementId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
-  if (!measurementId) return;
-  callGtag("config", measurementId, { page_path: path });
+  if (!activeGaMeasurementId) return;
+  callGtag("config", activeGaMeasurementId, { page_path: path });
 }
 
 export function trackGaEvent(eventName: string, params?: Record<string, unknown>) {
@@ -56,19 +58,19 @@ export function trackGaLogin() {
 }
 
 export default function GoogleAnalytics() {
-  const [measurementId, setMeasurementId] = useState("");
-  const [enabled, setEnabled] = useState(false);
+  const [measurementId, setMeasurementId] = useState(FALLBACK_GA_MEASUREMENT_ID);
+  const [enabled, setEnabled] = useState(Boolean(FALLBACK_GA_MEASUREMENT_ID));
 
   useEffect(() => {
     loadAnalyticsConfig()
       .then((data) => {
-        setMeasurementId(data?.config?.gaMeasurementId || "");
-        setEnabled(Boolean(data?.config?.enableGoogleAnalytics));
+        const configuredId = data?.config?.gaMeasurementId || FALLBACK_GA_MEASUREMENT_ID;
+        activeGaMeasurementId = configuredId;
+        setMeasurementId(configuredId);
+        setEnabled(Boolean(configuredId) && data?.config?.enableGoogleAnalytics !== false);
       })
       .catch(() => {
-        const fallback = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || "";
-        setMeasurementId(fallback);
-        setEnabled(Boolean(fallback));
+        activeGaMeasurementId = FALLBACK_GA_MEASUREMENT_ID;
       });
   }, []);
 

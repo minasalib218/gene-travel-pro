@@ -483,9 +483,16 @@ export async function getAdminAnalyticsSnapshot(args: {
         WHERE "createdAt" >= ${args.dateFrom}
           AND "createdAt" < ${args.dateTo}
           AND (${source}::text IS NULL OR source = ${source})
+      ),
+      filtered_sessions AS (
+        SELECT *
+        FROM analytics_sessions
+        WHERE "startedAt" >= ${args.dateFrom}
+          AND "startedAt" < ${args.dateTo}
+          AND (${source}::text IS NULL OR "utmSource" = ${source})
       )
       SELECT
-        (SELECT COUNT(*)::int FROM filtered_events) AS "totalVisitors",
+        (SELECT COUNT(DISTINCT COALESCE("userId", "anonymousId", "sessionId"))::int FROM filtered_events) AS "totalVisitors",
         (SELECT COUNT(DISTINCT "sessionId")::int FROM filtered_events) AS "uniqueSessions",
         (SELECT COUNT(DISTINCT COALESCE(country, 'unknown'))::int FROM filtered_events) AS "countries",
         (SELECT COUNT(*)::int FROM filtered_events WHERE "eventName" = 'page_view') AS "pageViews",
@@ -496,7 +503,9 @@ export async function getAdminAnalyticsSnapshot(args: {
         (SELECT COUNT(*)::int FROM filtered_events WHERE "eventName" IN ('ai_input_completed', 'ai_planner_step_completed', 'ai_generation_completed')) AS "plannerCompletions",
         (SELECT COUNT(*)::int FROM filtered_events WHERE "eventName" IN ('booking_button_clicked', 'book_now_clicked', 'affiliate_redirect_clicked', 'booking_link_clicked')) AS "bookingClicks",
         (SELECT COUNT(*)::int FROM filtered_events WHERE "eventName" IN ('affiliate_redirect_clicked', 'booking_link_clicked')) AS "affiliateClicks",
-        (SELECT COUNT(*)::int FROM filtered_events WHERE "eventName" IN ('payment_failed', 'credit_purchase_failed')) AS "paymentFailures"
+        (SELECT COUNT(*)::int FROM filtered_events WHERE "eventName" IN ('payment_failed', 'credit_purchase_failed')) AS "paymentFailures",
+        (SELECT COALESCE(AVG(EXTRACT(EPOCH FROM ("lastSeenAt" - "startedAt"))), 0)::float FROM filtered_sessions) AS "averageSessionTime",
+        (SELECT CASE WHEN COUNT(*) > 0 THEN (COUNT(*) FILTER (WHERE "pageViews" <= 1)::float / COUNT(*)::float) * 100 ELSE 0 END FROM filtered_sessions) AS "bounceRate"
     `,
   ).catch((error) => {
     if (isMissingTableError(error)) return [];
@@ -516,6 +525,8 @@ export async function getAdminAnalyticsSnapshot(args: {
     bookingClicks: 0,
     affiliateClicks: 0,
     paymentFailures: 0,
+    averageSessionTime: 0,
+    bounceRate: 0,
   };
 
   const [visitorsByDay, visitorsByCountry, topPages, topReferrers, funnelDropoff, purchasesByPackage, topReadyPlans, topDestinations, topOffers, topEvents, topAffiliateClicks, deviceBreakdown, userBehavior] =
@@ -652,8 +663,8 @@ export async function getAdminAnalyticsSnapshot(args: {
   const checkoutConversionRate = base.checkouts > 0 ? (base.purchases / base.checkouts) * 100 : 0;
   const plannerCompletionRate = base.plannerStarts > 0 ? (base.plannerCompletions / base.plannerStarts) * 100 : 0;
   const bookingClickRate = base.uniqueSessions > 0 ? (base.bookingClicks / base.uniqueSessions) * 100 : 0;
-  const bounceRateEstimate = base.uniqueSessions > 0 ? Math.max(0, ((base.uniqueSessions - base.plannerStarts) / base.uniqueSessions) * 100) : 0;
-  const averageSessionTimeEstimate = base.uniqueSessions > 0 ? Math.max(18, Math.round((base.pageViews / Math.max(base.uniqueSessions, 1)) * 47)) : 0;
+  const bounceRate = Number(base.bounceRate || 0);
+  const averageSessionTime = Math.max(0, Math.round(Number(base.averageSessionTime || 0)));
 
   return {
     metrics: {
@@ -662,8 +673,8 @@ export async function getAdminAnalyticsSnapshot(args: {
       checkoutConversionRate,
       plannerCompletionRate,
       bookingClickRate,
-      bounceRateEstimate,
-      averageSessionTimeEstimate,
+      bounceRate,
+      averageSessionTime,
     },
     visitorsByDay,
     visitorsByCountry,
