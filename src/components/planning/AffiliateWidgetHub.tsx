@@ -18,7 +18,7 @@ type WidgetDefinition = {
   description: string;
   icon: typeof Plane;
   src?: string;
-  provider?: "getyourguide";
+  provider?: "getyourguide" | "klook";
 };
 
 const widgets: WidgetDefinition[] = [
@@ -39,9 +39,9 @@ const widgets: WidgetDefinition[] = [
   {
     id: "hotels",
     label: "Hotels",
-    description: "Search accommodation for your selected dates.",
+    description: "Search hotels and compare live accommodation options from Klook.",
     icon: Hotel,
-    src: process.env.NEXT_PUBLIC_TRAVELPAYOUTS_HOTELS_WIDGET_URL,
+    provider: "klook",
   },
   {
     id: "esim",
@@ -86,7 +86,23 @@ function AffiliateWidget({ widget }: { widget: WidgetDefinition }) {
 
   useEffect(() => {
     const host = hostRef.current;
-    if (!host || !widget.src || widget.provider === "getyourguide") return;
+    if (!host || widget.provider === "getyourguide") return;
+
+    if (widget.provider === "klook") {
+      setFailed(false);
+      const script = document.createElement("script");
+      script.async = true;
+      script.src = "https://affiliate.klook.com/widget/fetch-iframe-init.js";
+      script.dataset.geneAffiliateWidget = widget.id;
+      script.onerror = () => setFailed(true);
+      host.appendChild(script);
+
+      return () => {
+        script.remove();
+      };
+    }
+
+    if (!widget.src) return;
 
     setFailed(false);
     host.replaceChildren();
@@ -113,6 +129,38 @@ function AffiliateWidget({ widget }: { widget: WidgetDefinition }) {
           data-gyg-q="tours and activities"
           data-gyg-campaign="gene-widget-hub"
         />
+      </div>
+    );
+  }
+
+  if (widget.provider === "klook") {
+    return (
+      <div className="overflow-hidden rounded-2xl bg-white p-2 sm:p-4">
+        {failed ? (
+          <div className="flex min-h-40 items-center justify-center px-4 text-center text-sm text-red-700">
+            The Klook hotel widget could not load. Please try again.
+          </div>
+        ) : null}
+        <div ref={hostRef} className={failed ? "hidden" : "min-h-[470px] w-full overflow-hidden"}>
+          <ins
+            className="klk-aff-widget"
+            data-adid="1457906"
+            data-lang="en-BS"
+            data-currency="USD"
+            data-card-h="126"
+            data-padding="92"
+            data-lg-h="470"
+            data-edge-value="655"
+            data-dest_id="-1"
+            data-tid=""
+            data-amount="4"
+            data-prod="hotel_dynamic_widget"
+          >
+            <a href="https://www.klook.com/" target="_blank" rel="noopener noreferrer sponsored">
+              Klook.com
+            </a>
+          </ins>
+        </div>
       </div>
     );
   }
