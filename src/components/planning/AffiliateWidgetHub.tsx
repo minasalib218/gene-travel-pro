@@ -76,7 +76,7 @@ const widgets: WidgetDefinition[] = [
     label: "Travel Insurance",
     description: "Compare cover for your planned journey.",
     icon: ShieldCheck,
-    src: process.env.NEXT_PUBLIC_TRAVELPAYOUTS_INSURANCE_WIDGET_URL,
+    src: "https://tpscr.com/content?trs=142507&shmarker=329171&locale=en&width=100&powered_by=true&campaign_id=86&promo_id=2110",
   },
 ];
 
