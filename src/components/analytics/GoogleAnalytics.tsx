@@ -58,8 +58,8 @@ export function trackGaLogin() {
 }
 
 export default function GoogleAnalytics() {
-  const [measurementId, setMeasurementId] = useState(FALLBACK_GA_MEASUREMENT_ID);
-  const [enabled, setEnabled] = useState(Boolean(FALLBACK_GA_MEASUREMENT_ID));
+  const [measurementId, setMeasurementId] = useState("");
+  const [enabled, setEnabled] = useState(false);
 
   useEffect(() => {
     loadAnalyticsConfig()
@@ -71,6 +71,8 @@ export default function GoogleAnalytics() {
       })
       .catch(() => {
         activeGaMeasurementId = FALLBACK_GA_MEASUREMENT_ID;
+        setMeasurementId(FALLBACK_GA_MEASUREMENT_ID);
+        setEnabled(Boolean(FALLBACK_GA_MEASUREMENT_ID));
       });
   }, []);
 
