@@ -31,6 +31,10 @@ export default function ReadyPlanTripActions({ readyPlanId }: { readyPlanId: str
       router.push(`/ai-planner?planId=${encodeURIComponent(result.planId)}`);
       return;
     }
+    if (action === "ADD_READY_PLAN" && result.customerPlanId) {
+      router.push(`/profile/control-centre/${encodeURIComponent(result.customerPlanId)}`);
+      return;
+    }
     setMessage(result.existing ? "This ready plan is already in My Trips." : "Added to My Trips.");
   }
 
@@ -38,7 +42,7 @@ export default function ReadyPlanTripActions({ readyPlanId }: { readyPlanId: str
     <div>
       <div className="flex flex-wrap gap-2">
         <button type="button" disabled={Boolean(busy)} onClick={() => run("ADD_READY_PLAN")} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/20 bg-black/25 px-4 text-xs font-bold text-white backdrop-blur-xl disabled:opacity-50">
-          <BookmarkPlus className="h-4 w-4" /> {busy === "add" ? "Adding..." : "Add to My Trips"}
+          <BookmarkPlus className="h-4 w-4" /> {busy === "add" ? "Preparing trip..." : "Use This Plan"}
         </button>
         <button type="button" disabled={Boolean(busy)} onClick={() => run("CUSTOMIZE_READY_PLAN")} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#ff7a00]/45 bg-[#ff7a00]/12 px-4 text-xs font-bold text-[#ffb36c] backdrop-blur-xl disabled:opacity-50">
           <Sparkles className="h-4 w-4" /> {busy === "customize" ? "Preparing..." : "Use as base & customize"}

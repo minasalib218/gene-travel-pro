@@ -125,6 +125,8 @@ export default async function MyTripsPage() {
   const savedTrips: TripCardData[] = savedReadyRows.flatMap((saved) => {
     const ready = readyById.get(saved.refId);
     if (!ready) return [];
+    const savedMeta = objectValue(saved.meta);
+    const customerPlanId = typeof savedMeta.customerPlanId === "string" ? savedMeta.customerPlanId : null;
     return [{
       id: saved.id,
       readyPlanId: ready.id,
@@ -144,7 +146,9 @@ export default async function MyTripsPage() {
       bookedCount: 0,
       coverImage: ready.coverImage || ready.heroImage,
       lastUpdatedAt: ready.updatedAt.toISOString(),
-      primaryHref: `/ready-plans/${ready.slug}`,
+      primaryHref: customerPlanId && isControlCentreFeatureEnabled("controlCentre")
+        ? `/profile/control-centre/${customerPlanId}`
+        : `/ready-plans/${ready.slug}`,
       documentsNeedingAttention: 0,
     }];
   });

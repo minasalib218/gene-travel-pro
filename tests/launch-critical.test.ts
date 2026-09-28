@@ -66,4 +66,10 @@ assert.doesNotMatch(
   "Launch work must not clear existing affiliate URLs.",
 );
 
+const profileTrips = read("src/app/api/profile/trips/route.ts");
+assert.match(profileTrips, /creationKey = `ready-plan:\$\{userId\}:\$\{readyPlan\.id\}`/);
+assert.match(profileTrips, /insert into public\.customer_plans/);
+assert.match(profileTrips, /item\.affiliateUrl/);
+assert.match(profileTrips, /customerPlanId/);
+
 console.log("launch-critical guardrails passed");

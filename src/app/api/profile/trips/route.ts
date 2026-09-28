@@ -94,22 +94,126 @@ export async function POST(request: NextRequest) {
 
   const readyPlan = await prisma.readyPlan.findFirst({
     where: { id: input.readyPlanId, status: "PUBLISHED" },
-    select: { id: true, slug: true, title: true, destination: true, heroImage: true, coverImage: true, daysCount: true },
+    select: {
+      id: true,
+      slug: true,
+      title: true,
+      destination: true,
+      heroImage: true,
+      coverImage: true,
+      daysCount: true,
+      dayRecords: {
+        orderBy: [{ sortOrder: "asc" }, { dayNumber: "asc" }],
+        select: {
+          id: true,
+          dayNumber: true,
+          title: true,
+          city: true,
+          country: true,
+          description: true,
+          mainImageUrl: true,
+          itemRecords: {
+            orderBy: { sortOrder: "asc" },
+            select: {
+              id: true,
+              type: true,
+              title: true,
+              description: true,
+              imageUrl: true,
+              price: true,
+              peopleCount: true,
+              categoryLabel: true,
+              affiliateUrl: true,
+              sortOrder: true,
+            },
+          },
+        },
+      },
+    },
   });
   if (!readyPlan) return NextResponse.json({ ok: false, code: "NOT_FOUND" }, { status: 404 });
 
   if (input.action === "ADD_READY_PLAN") {
-    const existing = await prisma.savedItem.findFirst({ where: { userId, kind: "READY_PLAN", refId: readyPlan.id } });
-    const saved = existing || await prisma.savedItem.create({
-      data: {
-        userId,
-        kind: "READY_PLAN",
-        refId: readyPlan.id,
-        meta: { source: "MY_TRIPS", title: readyPlan.title, slug: readyPlan.slug, coverImage: readyPlan.coverImage || readyPlan.heroImage } as Prisma.InputJsonValue,
-      },
+    const creationKey = `ready-plan:${userId}:${readyPlan.id}`;
+    const startDate = new Date();
+    startDate.setUTCHours(12, 0, 0, 0);
+    const endDate = new Date(startDate);
+    endDate.setUTCDate(endDate.getUTCDate() + Math.max(0, readyPlan.daysCount - 1));
+
+    const result = await prisma.$transaction(async (tx) => {
+      const existingPlans = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        select id::text from public.customer_plans
+        where user_id=${userId}::uuid and creation_key=${creationKey}
+        limit 1
+      `);
+      let customerPlanId = existingPlans[0]?.id ?? null;
+
+      if (!customerPlanId) {
+        const createdPlans = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+          insert into public.customer_plans (
+            user_id, creation_key, status, planning_stage, title, destination,
+            start_date, end_date, inputs_json, summary_json
+          ) values (
+            ${userId}::uuid, ${creationKey}, 'RECOMMENDED', 'TIMELINE_READY',
+            ${readyPlan.title}, ${readyPlan.destination}, ${startDate}, ${endDate},
+            ${JSON.stringify({ sourceType: "READY_PLAN", sourceReadyPlanId: readyPlan.id, sourceReadyPlanSlug: readyPlan.slug, datesSelected: false })}::jsonb,
+            ${JSON.stringify({ coverImage: readyPlan.coverImage || readyPlan.heroImage, sourceReadyPlanId: readyPlan.id })}::jsonb
+          )
+          returning id::text as id
+        `);
+        customerPlanId = createdPlans[0].id;
+
+        for (const [dayIndex, day] of readyPlan.dayRecords.entries()) {
+          const createdDays = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+            insert into public.customer_plan_days (plan_id, day_index, day_date)
+            values (${customerPlanId}::uuid, ${dayIndex}, null)
+            returning id::text as id
+          `);
+          const customerDayId = createdDays[0].id;
+
+          for (const item of day.itemRecords) {
+            await tx.$executeRaw(Prisma.sql`
+              insert into public.customer_plan_items (
+                plan_day_id, slot, kind, title, description, provider,
+                provider_id, image_url, deeplink, metadata
+              ) values (
+                ${customerDayId}::uuid, ${`day-${day.dayNumber}`}, ${item.type || "activity"},
+                ${item.title}, ${item.description}, null, ${item.id}, ${item.imageUrl},
+                ${item.affiliateUrl},
+                ${JSON.stringify({
+                  readyPlanDayId: day.id,
+                  readyPlanItemId: item.id,
+                  dayTitle: day.title,
+                  city: day.city,
+                  country: day.country,
+                  dayDescription: day.description,
+                  dayImage: day.mainImageUrl,
+                  price: item.price,
+                  peopleCount: item.peopleCount,
+                  categoryLabel: item.categoryLabel,
+                  sortOrder: item.sortOrder,
+                })}::jsonb
+              )
+            `);
+          }
+        }
+      }
+
+      const existing = await tx.savedItem.findFirst({ where: { userId, kind: "READY_PLAN", refId: readyPlan.id } });
+      const meta = {
+        source: "MY_TRIPS",
+        title: readyPlan.title,
+        slug: readyPlan.slug,
+        coverImage: readyPlan.coverImage || readyPlan.heroImage,
+        customerPlanId,
+      } as Prisma.InputJsonValue;
+      const saved = existing
+        ? await tx.savedItem.update({ where: { id: existing.id }, data: { meta } })
+        : await tx.savedItem.create({ data: { userId, kind: "READY_PLAN", refId: readyPlan.id, meta } });
+      return { saved, customerPlanId, existing: Boolean(existingPlans[0]) };
     });
     await recordUserActivity({ userId, event: "TRIP_ADDED_FROM_READY_PLAN", entityType: "READY_PLAN", entityId: readyPlan.id });
-    return NextResponse.json({ ok: true, savedItemId: saved.id, existing: Boolean(existing) });
+    return NextResponse.json({ ok: true, savedItemId: result.saved.id, customerPlanId: result.customerPlanId, existing: result.existing });
   }
 
   const existingCustomized = await prisma.plan.findMany({ where: { userId }, select: { id: true, inputsJson: true } }).then((plans) =>
