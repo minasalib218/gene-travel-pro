@@ -163,37 +163,50 @@ export async function POST(request: NextRequest) {
         `);
         customerPlanId = createdPlans[0].id;
 
-        for (const [dayIndex, day] of readyPlan.dayRecords.entries()) {
-          const createdDays = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        if (readyPlan.dayRecords.length) {
+          const dayValues = readyPlan.dayRecords.map((_, dayIndex) =>
+            Prisma.sql`(${customerPlanId}::uuid, ${dayIndex}, null)`,
+          );
+          await tx.$executeRaw(Prisma.sql`
             insert into public.customer_plan_days (plan_id, day_index, day_date)
-            values (${customerPlanId}::uuid, ${dayIndex}, null)
-            returning id::text as id
+            values ${Prisma.join(dayValues)}
+            on conflict (plan_id, day_index) do nothing
           `);
-          const customerDayId = createdDays[0].id;
 
-          for (const item of day.itemRecords) {
+          const customerDays = await tx.$queryRaw<Array<{ id: string; dayIndex: number }>>(Prisma.sql`
+            select id::text as id, day_index as "dayIndex"
+            from public.customer_plan_days
+            where plan_id=${customerPlanId}::uuid
+          `);
+          const customerDayByIndex = new Map(customerDays.map((day) => [day.dayIndex, day.id]));
+          const itemValues = readyPlan.dayRecords.flatMap((day, dayIndex) => {
+            const customerDayId = customerDayByIndex.get(dayIndex);
+            if (!customerDayId) return [];
+            return day.itemRecords.map((item) => Prisma.sql`(
+              ${customerDayId}::uuid, ${`day-${day.dayNumber}`}, ${item.type || "activity"},
+              ${item.title}, ${item.description}, null, ${item.id}, ${item.imageUrl},
+              ${item.affiliateUrl},
+              ${JSON.stringify({
+                readyPlanDayId: day.id,
+                readyPlanItemId: item.id,
+                dayTitle: day.title,
+                city: day.city,
+                country: day.country,
+                dayDescription: day.description,
+                dayImage: day.mainImageUrl,
+                price: item.price,
+                peopleCount: item.peopleCount,
+                categoryLabel: item.categoryLabel,
+                sortOrder: item.sortOrder,
+              })}::jsonb
+            )`);
+          });
+          if (itemValues.length) {
             await tx.$executeRaw(Prisma.sql`
               insert into public.customer_plan_items (
                 plan_day_id, slot, kind, title, description, provider,
                 provider_id, image_url, deeplink, metadata
-              ) values (
-                ${customerDayId}::uuid, ${`day-${day.dayNumber}`}, ${item.type || "activity"},
-                ${item.title}, ${item.description}, null, ${item.id}, ${item.imageUrl},
-                ${item.affiliateUrl},
-                ${JSON.stringify({
-                  readyPlanDayId: day.id,
-                  readyPlanItemId: item.id,
-                  dayTitle: day.title,
-                  city: day.city,
-                  country: day.country,
-                  dayDescription: day.description,
-                  dayImage: day.mainImageUrl,
-                  price: item.price,
-                  peopleCount: item.peopleCount,
-                  categoryLabel: item.categoryLabel,
-                  sortOrder: item.sortOrder,
-                })}::jsonb
-              )
+              ) values ${Prisma.join(itemValues)}
             `);
           }
         }
@@ -211,7 +224,7 @@ export async function POST(request: NextRequest) {
         ? await tx.savedItem.update({ where: { id: existing.id }, data: { meta } })
         : await tx.savedItem.create({ data: { userId, kind: "READY_PLAN", refId: readyPlan.id, meta } });
       return { saved, customerPlanId, existing: Boolean(existingPlans[0]) };
-    });
+    }, { maxWait: 10_000, timeout: 30_000 });
     await recordUserActivity({ userId, event: "TRIP_ADDED_FROM_READY_PLAN", entityType: "READY_PLAN", entityId: readyPlan.id });
     return NextResponse.json({ ok: true, savedItemId: result.saved.id, customerPlanId: result.customerPlanId, existing: result.existing });
   }
