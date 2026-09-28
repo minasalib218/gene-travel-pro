@@ -5,6 +5,7 @@ import AffiliateWidgetHub from "@/components/planning/AffiliateWidgetHub";
 import GeneLogo from "@/components/brand/GeneLogo";
 import ProfileSidebarNav from "@/components/profile/ProfileSidebarNav";
 import ProfileMobileNav from "@/components/profile/ProfileMobileNav";
+import CreateTripFunnel from "@/components/profile/CreateTripFunnel";
 import { ensureUserProfile } from "@/lib/profile/ensureUserProfile";
 import { createRouteClient } from "@/lib/supabase/server";
 
@@ -44,7 +45,9 @@ export default async function CreatePlanPage() {
 
           <div className="relative overflow-hidden">
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,122,0,0.16),transparent_35%)]" />
-            <AffiliateWidgetHub />
+            <CreateTripFunnel>
+              <AffiliateWidgetHub />
+            </CreateTripFunnel>
           </div>
         </div>
       </div>

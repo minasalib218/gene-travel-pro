@@ -72,4 +72,9 @@ assert.match(profileTrips, /insert into public\.customer_plans/);
 assert.match(profileTrips, /item\.affiliateUrl/);
 assert.match(profileTrips, /customerPlanId/);
 
+const manualTrips = read("src/app/api/profile/customer-trips/route.ts");
+assert.match(manualTrips, /requireUser\(\)/, "Manual trip creation must resolve ownership from the authenticated session.");
+assert.match(manualTrips, /creationKey = `manual:\$\{auth\.user\.id\}:\$\{input\.creationKey\}`/, "Manual trip creation must be idempotent per user.");
+assert.match(manualTrips, /insert into public\.customer_plans/, "Manual trips must be persisted server-side.");
+
 console.log("launch-critical guardrails passed");
