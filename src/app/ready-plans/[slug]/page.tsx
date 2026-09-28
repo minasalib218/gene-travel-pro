@@ -5,7 +5,7 @@ import CinematicReadyPlanPage from "@/components/ready-plan/CinematicReadyPlanPa
 import { buildDefaultReadyPlanContent } from "@/lib/ready-plan-content";
 import { sanitizeReadyPlanContentForPublic } from "@/lib/ready-plan-public";
 import { getReadyPlanBookableItems } from "@/lib/ready-plan-booking";
-import { isDatabaseUnavailableError, tableExists, withDatabaseFallback } from "@/lib/prisma-safe";
+import { tableExists } from "@/lib/prisma-safe";
 import { buildSeoMetadata, jsonLdScript, readyPlanDescription, SITE_URL } from "@/lib/seo";
 
 export const revalidate = 60;
@@ -42,67 +42,51 @@ const getPublishedReadyPlan = unstable_cache(
 
     try {
       plan = includeLinks
-        ? await withDatabaseFallback(
-            () =>
-              prisma.readyPlan.findUnique({
-                where: { slug },
-                include: {
-                  links: {
-                    orderBy: { sortOrder: "asc" },
-                  },
-                  ...dayRecordsInclude,
-                },
-              } as any),
-            null,
-          )
-        : await withDatabaseFallback(
-            () =>
-              prisma.readyPlan.findUnique({
-                where: { slug },
-                include: dayRecordsInclude,
-              } as any),
-            null,
-          );
-    } catch (error: any) {
-      if (isDatabaseUnavailableError(error)) {
-        return null;
-      }
-
-      if (error?.code !== "P2022") throw error;
-      plan = await withDatabaseFallback(
-        () =>
-          prisma.readyPlan.findUnique({
+        ? await prisma.readyPlan.findUnique({
             where: { slug },
-            select: {
-              id: true,
-              slug: true,
-              title: true,
-              subtitle: true,
-              destination: true,
-              daysCount: true,
-              heroImage: true,
-              coverImage: true,
-              priceFrom: true,
-              currency: true,
-              status: true,
-              daysJson: true,
-              ...(includeLinks
-                ? {
-                    links: {
-                      orderBy: { sortOrder: "asc" },
-                    },
-                  }
-                : {}),
+            include: {
+              links: {
+                orderBy: { sortOrder: "asc" },
+              },
               ...dayRecordsInclude,
             },
-          } as any),
-        null,
-      );
+          } as any)
+        : await prisma.readyPlan.findUnique({
+            where: { slug },
+            include: dayRecordsInclude,
+          } as any);
+    } catch (error: any) {
+      if (error?.code !== "P2022") throw error;
+      plan = await prisma.readyPlan.findUnique({
+        where: { slug },
+        select: {
+          id: true,
+          slug: true,
+          title: true,
+          subtitle: true,
+          destination: true,
+          daysCount: true,
+          heroImage: true,
+          coverImage: true,
+          priceFrom: true,
+          currency: true,
+          status: true,
+          daysJson: true,
+          ...(includeLinks
+            ? {
+                links: {
+                  orderBy: { sortOrder: "asc" },
+                },
+              }
+            : {}),
+          ...dayRecordsInclude,
+        },
+      } as any);
     }
 
     return plan;
   },
-  ["published-ready-plan-detail"],
+  ["published-ready-plan-detail-v2"],
   {
     revalidate: 60,
     tags: ["published-ready-plans"],

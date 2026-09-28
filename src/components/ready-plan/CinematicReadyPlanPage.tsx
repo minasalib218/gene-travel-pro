@@ -727,8 +727,6 @@ function MobileReadyPlanView({
 }) {
   const [overlay, setOverlay] = useState<MobileOverlay>(null);
   const lastDay = activeDayIndex >= days.length - 1;
-  const mobileHeroTitle = splitHeroTitle(content.hero.title);
-
   function goToDay(index: number) {
     setActiveDayIndex(Math.min(Math.max(index, 0), Math.max(days.length - 1, 0)));
     window.requestAnimationFrame(() => {
@@ -758,8 +756,8 @@ function MobileReadyPlanView({
           </div>
           <div className="absolute inset-x-0 bottom-0 p-4 text-center">
             <h1 className="font-serif text-[26px] font-semibold leading-[1.02] text-white">
-              <span className="block">{mobileHeroTitle.lead || content.hero.title}</span>
-              {mobileHeroTitle.accent ? <span className="mt-1 block text-[#ff8a1f]">{mobileHeroTitle.accent} <span className="text-[#ffc78c]">+</span></span> : null}
+              <span className="block">Your Cinematic</span>
+              <span className="mt-1 block text-[#ff8a1f]">Ready Plan <span className="text-[#ffc78c]">+</span></span>
             </h1>
             <p className="mx-auto mt-2 max-w-[310px] text-[14px] leading-5 text-white/82">{content.hero.subtitle}</p>
             <div className="mt-4 flex flex-wrap justify-center gap-2">
