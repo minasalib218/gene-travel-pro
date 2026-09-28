@@ -77,4 +77,9 @@ assert.match(manualTrips, /requireUser\(\)/, "Manual trip creation must resolve 
 assert.match(manualTrips, /creationKey = `manual:\$\{auth\.user\.id\}:\$\{input\.creationKey\}`/, "Manual trip creation must be idempotent per user.");
 assert.match(manualTrips, /insert into public\.customer_plans/, "Manual trips must be persisted server-side.");
 
+const publicReadyPlan = read("src/lib/ready-plan-public.ts");
+assert.match(publicReadyPlan, /affiliate\(\?: link\)\?\\s\+pending/, "Public Ready Plans must hide affiliate workflow labels.");
+assert.match(publicReadyPlan, /isPriceWithoutAmount/, "Public Ready Plans must not present a price label without an amount.");
+assert.match(publicReadyPlan, /deeplink: undefined/, "Public Ready Plan content must not expose raw item destinations.");
+
 console.log("launch-critical guardrails passed");

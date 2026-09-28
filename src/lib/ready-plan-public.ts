@@ -12,8 +12,25 @@ function isUrlLike(value: unknown) {
   return typeof value === "string" && /^(https?:\/\/|www\.|\/api\/affiliate\/redirect)/i.test(value.trim());
 }
 
+function isPrivateWorkflowLabel(value: unknown) {
+  return typeof value === "string" && /^(?:affiliate(?: link)?\s+pending|pending affiliate|draft)$/i.test(value.trim());
+}
+
+function isPriceWithoutAmount(value: unknown) {
+  if (typeof value !== "string") return false;
+  const normalized = value.trim();
+  return /^(?:live price|check live price|price unavailable|pricing pending|pending)$/i.test(normalized)
+    || (/live price/i.test(normalized) && !/\d/.test(normalized));
+}
+
 function publicText(value: string | undefined, fallback = "") {
-  return isUrlLike(value) ? fallback : value;
+  return isUrlLike(value) || isPrivateWorkflowLabel(value) ? fallback : value;
+}
+
+function publicPrice(value: string | undefined, fallback = "") {
+  return isUrlLike(value) || isPrivateWorkflowLabel(value) || isPriceWithoutAmount(value)
+    ? fallback
+    : value;
 }
 
 export function sanitizeReadyPlanContentForPublic(content: ReadyPlanContent): ReadyPlanContent {
@@ -27,20 +44,39 @@ export function sanitizeReadyPlanContentForPublic(content: ReadyPlanContent): Re
       ...day,
       timelineItems: day.timelineItems.map((item): ReadyPlanTimelineItem => ({
         ...item,
+        badge: publicText(item.badge),
+        status: publicText(item.status),
+        title: publicText(item.title, "Travel item") || "Travel item",
+        description: publicText(item.description),
+        buttonLabel: publicText(item.buttonLabel, BOOK_NOW_LABEL),
+        price: publicPrice(item.price),
+        people: publicText(item.people),
         deeplink: undefined,
       })),
       suggestions: day.suggestions.map((suggestion): ReadyPlanSuggestion => ({
         ...suggestion,
+        title: publicText(suggestion.title, "Travel suggestion") || "Travel suggestion",
+        category: publicText(suggestion.category),
         matchReason: publicText(suggestion.matchReason, ""),
         matchScore: publicText(suggestion.matchScore, "Recommended"),
+        price: publicPrice(suggestion.price),
         duration: publicText(suggestion.duration, ""),
         ctaText: publicText(suggestion.ctaText, BOOK_NOW_LABEL),
       })),
+      summary: {
+        ...day.summary,
+        estimatedCost: publicPrice(day.summary.estimatedCost, "-"),
+        upgrades: day.summary.upgrades?.filter((upgrade) => !isUrlLike(upgrade) && !isPrivateWorkflowLabel(upgrade)),
+      },
       story: {
         ...day.story,
         musicUrl: undefined,
       },
     })),
+    journeyOverview: {
+      ...content.journeyOverview,
+      estimatedCost: publicPrice(content.journeyOverview.estimatedCost, "Not available"),
+    },
     footer: {
       ...content.footer,
       ctaHref: "/start-planning",
