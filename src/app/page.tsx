@@ -55,8 +55,8 @@ export default async function HomePage() {
   today.setUTCHours(0, 0, 0, 0);
   let slides = fallbackSlides;
   let destinationCards: Array<{ id?: string; title: string; country: string; description: string; image: string; href: string; featured?: boolean; tripStyles?: DestinationTripStyleValue[] }> = [];
-  let offerCards: Array<{ id?: string; title: string; subtitle: string; image: string; href: string; cta: string }> = [];
-  let eventCards: Array<{ id?: string; title: string; subtitle: string; image: string; href: string; cta: string }> = [];
+  let offerCards: Array<{ id?: string; title: string; subtitle: string; image: string; href: string; cta: string; duration: string; startingPrice: string; discountBadge: string }> = [];
+  let eventCards: Array<{ id?: string; title: string; subtitle: string; image: string; href: string; cta: string; category: string; dateRange: string }> = [];
 
   try {
     const [plans, destinations, offers, events] = await Promise.all([
@@ -137,6 +137,9 @@ export default async function HomePage() {
         image: record.imageUrl,
         href: `/offers/${record.slug}`,
         cta: "View Offer",
+        duration: record.duration,
+        startingPrice: record.startingPrice,
+        discountBadge: record.discountBadge,
       };
     });
 
@@ -149,6 +152,8 @@ export default async function HomePage() {
         image: record.imageUrl,
         href: `/events/${record.slug}`,
         cta: "View Event",
+        category: record.category,
+        dateRange: record.dateRange,
       };
     });
   } catch {

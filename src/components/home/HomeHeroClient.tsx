@@ -38,6 +38,11 @@ type ContentCard = {
   image: string;
   href: string;
   cta: string;
+  duration?: string;
+  startingPrice?: string;
+  discountBadge?: string;
+  category?: string;
+  dateRange?: string;
 };
 
 type DestinationFeatureCard = {
@@ -307,14 +312,14 @@ export default function HomeHeroClient({
   const destinationCardsToShow = destinationCards.length > 0 ? destinationCards : destinationFeatureCards;
 
   const offersShowcase = useMemo<OfferFeatureCard[]>(() => {
-    if (offerCards.length >= 3) {
-      return offerCards.slice(0, 3).map((card, index) => ({
+    if (offerCards.length > 0) {
+      return offerCards.slice(0, 3).map((card) => ({
         id: card.id,
         title: card.title,
         location: card.subtitle || "Curated destination",
-        duration: index === 0 ? "5 Days / 4 Nights" : index === 1 ? "4 Days / 3 Nights" : "6 Days / 5 Nights",
-        price: index === 0 ? "$899" : index === 1 ? "$699" : "$749",
-        discount: index === 0 ? "SAVE 20%" : index === 1 ? "SAVE 15%" : "SAVE 25%",
+        duration: card.duration || "Curated travel window",
+        price: card.startingPrice || "Custom pricing",
+        discount: card.discountBadge || "Limited offer",
         image: card.image,
         href: card.href,
       }));
@@ -323,24 +328,16 @@ export default function HomeHeroClient({
   }, [offerCards]);
 
   const eventsShowcase = useMemo<EventFeatureCard[]>(() => {
-    if (eventCards.length >= 3) {
-      const mapped = eventCards.slice(0, 4).map((card, index) => ({
+    if (eventCards.length > 0) {
+      return eventCards.slice(0, 4).map((card) => ({
         id: card.id,
         title: card.title,
-        category: index === 0 ? "Festival" : index === 1 ? "Music" : index === 2 ? "Culture" : "Sports",
+        category: card.category || "Event",
         location: card.subtitle || "Curated event location",
-        date:
-          index === 0
-            ? "Nov 15 - Nov 16, 2024"
-            : index === 1
-              ? "Jul 19 - Jul 21, 2024"
-              : index === 2
-                ? "Feb 28 - Mar 08, 2025"
-                : "Aug 22 - Oct 27, 2024",
+        date: card.dateRange || "Seasonal details",
         image: card.image,
         href: card.href,
       }));
-      return mapped.length === 4 ? mapped : [...mapped, ...defaultEventFeatureCards.slice(mapped.length, 4)];
     }
     return defaultEventFeatureCards;
   }, [eventCards]);

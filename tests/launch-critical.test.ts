@@ -89,4 +89,15 @@ assert.match(publicReadyPlanUi, /READY_PLAN_FOOTER_IMAGE = "\/bg\/home-hero-bott
 assert.doesNotMatch(publicReadyPlanUi, /content\.hero\.primaryCtaText/, "The hero-level booking action must remain removed.");
 assert.equal([...publicReadyPlanUi.matchAll(/View Full Timeline/g)].length, 1, "Only the itinerary timeline control should remain; the hero control must stay removed.");
 
+const homePage = read("src/app/page.tsx");
+const homeClient = read("src/components/home/HomeHeroClient.tsx");
+assert.match(homePage, /startingPrice: record\.startingPrice/, "Homepage offers must receive the admin-published price.");
+assert.match(homePage, /category: record\.category/, "Homepage events must receive the admin-published category.");
+assert.match(homePage, /dateRange: record\.dateRange/, "Homepage events must receive the admin-published dates.");
+assert.match(homeClient, /price: card\.startingPrice/, "Offer cards must display their published price instead of a demo value.");
+assert.match(homeClient, /duration: card\.duration/, "Offer cards must display their published duration.");
+assert.match(homeClient, /discount: card\.discountBadge/, "Offer cards must display their published discount label.");
+assert.match(homeClient, /category: card\.category/, "Event cards must display their published category.");
+assert.match(homeClient, /date: card\.dateRange/, "Event cards must display their published dates.");
+
 console.log("launch-critical guardrails passed");
