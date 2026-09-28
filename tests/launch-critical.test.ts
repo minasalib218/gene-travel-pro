@@ -82,4 +82,11 @@ assert.match(publicReadyPlan, /affiliate\(\?: link\)\?\\s\+pending/, "Public Rea
 assert.match(publicReadyPlan, /isPriceWithoutAmount/, "Public Ready Plans must not present a price label without an amount.");
 assert.match(publicReadyPlan, /deeplink: undefined/, "Public Ready Plan content must not expose raw item destinations.");
 
+const publicReadyPlanUi = read("src/components/ready-plan/CinematicReadyPlanPage.tsx");
+assert.match(publicReadyPlanUi, /api\/affiliate\/redirect\?itemId=/, "Item-level Book Now links must keep using the affiliate redirect.");
+assert.match(publicReadyPlanUi, /READY_PLAN_IMAGE_FALLBACK/, "Broken Ready Plan images must have a stable visual fallback.");
+assert.match(publicReadyPlanUi, /READY_PLAN_FOOTER_IMAGE = "\/bg\/home-hero-bottom-optimized\.jpg"/, "Ready Plan footers must use the fixed optimized artwork.");
+assert.doesNotMatch(publicReadyPlanUi, /content\.hero\.primaryCtaText/, "The hero-level booking action must remain removed.");
+assert.equal([...publicReadyPlanUi.matchAll(/View Full Timeline/g)].length, 1, "Only the itinerary timeline control should remain; the hero control must stay removed.");
+
 console.log("launch-critical guardrails passed");

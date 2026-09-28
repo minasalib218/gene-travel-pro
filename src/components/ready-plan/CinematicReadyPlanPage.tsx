@@ -16,7 +16,6 @@ import {
   MapPin,
   Music4,
   Plane,
-  Play,
   X,
   Sparkles,
   Star,
@@ -46,6 +45,8 @@ type Props = {
 
 const ease = [0.22, 1, 0.36, 1] as const;
 const BOOK_NOW_LABEL = "Book Now";
+const READY_PLAN_IMAGE_FALLBACK = "/bg/home-hero.png";
+const READY_PLAN_FOOTER_IMAGE = "/bg/home-hero-bottom-optimized.jpg";
 const PAGE_MAX_WIDTH = "max-w-[1520px]";
 const PAGE_PADDING = "px-6";
 const ITEM_IMAGE_CLASS = "h-[120px] w-[160px] shrink-0 object-cover rounded-l-[12px]";
@@ -113,7 +114,18 @@ function Img({
   className?: string;
   eager?: boolean;
 }) {
-  const imageSrc = src || "/bg/home-hero.png";
+  const requestedSrc = src?.trim() || READY_PLAN_IMAGE_FALLBACK;
+  const [imageSrc, setImageSrc] = useState(requestedSrc);
+
+  useEffect(() => {
+    setImageSrc(requestedSrc);
+  }, [requestedSrc]);
+
+  const handleImageError = () => {
+    if (imageSrc !== READY_PLAN_IMAGE_FALLBACK) {
+      setImageSrc(READY_PLAN_IMAGE_FALLBACK);
+    }
+  };
 
   if (imageSrc.startsWith("data:") || imageSrc.startsWith("blob:")) {
     return (
@@ -124,6 +136,7 @@ function Img({
         loading={eager ? "eager" : "lazy"}
         decoding="async"
         fetchPriority={eager ? "high" : "auto"}
+        onError={handleImageError}
       />
     );
   }
@@ -139,6 +152,7 @@ function Img({
       className={className}
       priority={eager}
       loading={eager ? "eager" : "lazy"}
+      onError={handleImageError}
     />
   );
 }
@@ -310,23 +324,6 @@ export default function CinematicReadyPlanPage({
               </div>
 
               <div className="mt-8 flex flex-wrap items-center gap-4">
-                <Link
-                  href={plannerHref}
-                  className="inline-flex items-center gap-3 rounded-[18px] bg-[linear-gradient(135deg,#ff7a00,#ffab3d)] px-6 py-4 text-sm font-semibold text-white shadow-[0_0_34px_rgba(255,122,0,0.42)] transition hover:shadow-[0_0_46px_rgba(255,122,0,0.54)]"
-                >
-                  {content.hero.primaryCtaText || "Plan Smarter With AI"}
-                  <Sparkles size={15} />
-                </Link>
-
-                <a
-                  href="#timeline"
-                  className="inline-flex items-center gap-3 rounded-full border border-white/18 bg-black/30 px-4 py-3 text-sm text-white/88 backdrop-blur-xl transition hover:border-[#ffc088]/40"
-                >
-                  <span className="flex h-11 w-11 items-center justify-center rounded-full border border-[#ffc088]/35 bg-white/5">
-                    <Play size={16} className="ml-0.5 text-[#ffc088]" />
-                  </span>
-                  <span>View Full Timeline</span>
-                </a>
                 {planId ? <ReadyPlanTripActions readyPlanId={planId} /> : null}
               </div>
             </div>
@@ -598,7 +595,7 @@ export default function CinematicReadyPlanPage({
 
       <section className="relative overflow-hidden pb-8">
         <div className="absolute inset-0">
-          <Img src={content.footer.backgroundImage} alt={content.footer.title} className="h-full w-full object-cover" />
+          <Img src={READY_PLAN_FOOTER_IMAGE} alt={content.footer.title} className="h-full w-full object-cover" />
           <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(16,11,9,0.85)_0%,rgba(18,14,11,0.45)_42%,rgba(16,11,9,0.82)_100%)]" />
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_62%_50%,rgba(255,122,0,0.23),transparent_18%)]" />
         </div>
@@ -777,19 +774,6 @@ function MobileReadyPlanView({
         </section>
 
         <div className="space-y-3">
-          <Link
-            href={plannerHref}
-            className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[12px] bg-[#ff7a00] px-4 text-[14px] font-bold text-white shadow-[0_0_28px_rgba(255,122,0,0.34)]"
-          >
-            Plan Smarter With AI <Sparkles size={18} />
-          </Link>
-          <button
-            type="button"
-            onClick={() => setOverlay("timeline")}
-            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-[12px] border border-white/14 bg-white/[0.06] text-[14px] font-medium text-white"
-          >
-            <Play size={16} /> View Full Timeline
-          </button>
           {planId ? <ReadyPlanTripActions readyPlanId={planId} /> : null}
         </div>
 
@@ -935,7 +919,7 @@ function MobileReadyPlanView({
         </section>
 
         <section className="relative min-h-[178px] overflow-hidden rounded-[16px] border border-white/10 p-5 shadow-[0_18px_52px_rgba(0,0,0,0.24)]">
-          <Img src={content.footer.backgroundImage} alt={content.footer.title} className="absolute inset-0 h-full w-full object-cover" />
+          <Img src={READY_PLAN_FOOTER_IMAGE} alt={content.footer.title} className="absolute inset-0 h-full w-full object-cover" />
           <div className="absolute inset-0 bg-black/58" />
           <div className="relative">
             <h2 className="text-[20px] font-bold leading-6 text-white">{content.footer.title || "Your journey, but smarter."}</h2>
