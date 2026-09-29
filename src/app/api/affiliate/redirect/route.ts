@@ -9,6 +9,7 @@ import { recordBookingClick, recordUserActivity } from "@/lib/customer-activity"
 import { isIP } from "node:net";
 import { isControlCentreFeatureEnabled } from "@/lib/control-centre/featureFlags";
 import { findOwnedCustomerPlanItem, recordCustomerAffiliateClick } from "@/lib/control-centre/repository";
+import { createTravelpayoutsPartnerLink, isTravelpayoutsProvider } from "@/lib/providers/travelpayoutsLinks";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,8 @@ const DEFAULT_AFFILIATE_HOSTS = [
   "booking.com",
   "aviasales.com",
   "travelpayouts.com",
+  "tp.st",
+  "tp.media",
   "trip.com",
   "getyourguide.com",
   "expedia.com",
@@ -154,7 +157,9 @@ export async function GET(req: NextRequest) {
       });
 
       if (resolveOnly) return NextResponse.json({ ok: true, clickId: click.clickId });
-      const trackedDestination = withOpaqueAffiliateSubId(destinationUrl, item.provider, click.clickId);
+      const trackedDestination = isTravelpayoutsProvider(item.provider)
+        ? await createTravelpayoutsPartnerLink({ url: destinationUrl, subId: click.clickId })
+        : withOpaqueAffiliateSubId(destinationUrl, item.provider, click.clickId);
       return NextResponse.redirect(getSafeStoredAffiliateUrl(trackedDestination) || destinationUrl, { status: 302 });
     }
 
@@ -547,9 +552,16 @@ export async function GET(req: NextRequest) {
     }
 
     const bookingReference = (bookingItem as any).bookingReference;
-    const destinationUrl = getSafeAffiliateUrl(
-      bookingReference?.sourceUrl ?? bookingItem.affiliateRedirectUrl,
-    );
+    const provider = bookingItem.affiliateProvider || bookingItem.provider || "affiliate";
+    const sourceUrl = bookingReference?.sourceUrl ?? bookingItem.affiliateRedirectUrl;
+    const convertedUrl =
+      sourceUrl && isTravelpayoutsProvider(provider)
+        ? await createTravelpayoutsPartnerLink({
+            url: sourceUrl,
+            subId: `${planId}:${itemKey}`,
+          })
+        : sourceUrl;
+    const destinationUrl = getSafeAffiliateUrl(convertedUrl);
     if (!destinationUrl) {
       return NextResponse.json({ ok: false, message: "Booking link is not available yet. Please try another option." }, { status: 404 });
     }
