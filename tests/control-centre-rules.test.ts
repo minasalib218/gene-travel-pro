@@ -8,9 +8,10 @@ import {
   sanitizeOpaqueSubId,
 } from "../src/lib/control-centre/rules.ts";
 
-assert.doesNotThrow(() => assertBookingTransition("CLICKED", "CUSTOMER_CONFIRMED"));
+assert.doesNotThrow(() => assertBookingTransition("CLICKED", "USER_REPORTED"));
 assert.throws(() => assertBookingTransition("CLICKED", "PROVIDER_CONFIRMED"));
 assert.throws(() => assertBookingTransition("NOT_SELECTED", "PROVIDER_CONFIRMED"));
+assert.doesNotThrow(() => assertBookingTransition("USER_REPORTED", "PROVIDER_CONFIRMED"));
 
 assert.equal(calculateReadiness({ transport: 100, accommodation: 100 }).score, 40);
 assert.equal(calculateReadiness(Object.fromEntries([

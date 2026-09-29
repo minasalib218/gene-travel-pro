@@ -12,7 +12,8 @@
     "test:travel-engine": "node --experimental-strip-types --experimental-specifier-resolution=node tests/travel-engine.test.ts",
     "test:launch-critical": "node --experimental-strip-types --experimental-specifier-resolution=node tests/launch-critical.test.ts",
     "test:control-centre": "node --experimental-strip-types --experimental-specifier-resolution=node tests/control-centre-rules.test.ts",
-    "test:all": "npm run test:security && npm run test:travel-engine && npm run test:launch-critical && npm run test:control-centre",
+    "test:affiliate-booking": "node --experimental-strip-types --experimental-specifier-resolution=node tests/affiliate-booking.test.ts",
+    "test:all": "npm run test:security && npm run test:travel-engine && npm run test:launch-critical && npm run test:control-centre && npm run test:affiliate-booking",
     "test:e2e": "playwright test"
   },
   "dependencies": {

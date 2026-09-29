@@ -57,7 +57,7 @@ export async function listCustomerControlCentreTrips(userId: string) {
     from public.customer_plans p
     left join lateral (
       select count(*) as total,
-        count(*) filter (where status in ('CUSTOMER_CONFIRMED','PROVIDER_CONFIRMED')) as confirmed
+        count(*) filter (where status = 'PROVIDER_CONFIRMED') as confirmed
       from public.trip_booking_records where plan_id = p.id and user_id = ${userId}::uuid
     ) b on true
     left join lateral (
@@ -117,6 +117,8 @@ export async function recordCustomerAffiliateClick(args: {
   itemId: string;
   provider: string;
   sourcePage: string | null;
+  sessionId?: string | null;
+  affiliateProgram?: string | null;
   amount?: number | null;
   currency?: string | null;
   priceType?: "LIVE" | "RECENTLY_CHECKED" | "ESTIMATED" | "UNAVAILABLE";
@@ -141,15 +143,16 @@ export async function recordCustomerAffiliateClick(args: {
       priceSnapshotId = snapshots[0]?.id ?? null;
     }
 
-    const opaqueClickId = crypto.randomUUID().replaceAll("-", "");
+    const opaqueClickId = `gene_${crypto.randomUUID().replaceAll("-", "")}`;
     const clicks = await tx.$queryRaw<Array<{ id: string; opaqueClickId: string }>>(Prisma.sql`
       insert into public.trip_affiliate_clicks (
-        opaque_click_id, user_id, plan_id, item_id, provider, source_page,
-        price_snapshot_id, status
+        opaque_click_id, user_id, plan_id, item_id, provider, affiliate_program,
+        source_page, session_id, price_snapshot_id, status, updated_at
       ) values (
         ${opaqueClickId}, ${args.userId}::uuid, ${args.planId}::uuid,
-        ${args.itemId}::uuid, ${args.provider}, ${args.sourcePage},
-        ${priceSnapshotId}::uuid, 'RECORDED'
+        ${args.itemId}::uuid, ${args.provider}, ${args.affiliateProgram ?? null},
+        ${args.sourcePage}, ${args.sessionId ?? null},
+        ${priceSnapshotId}::uuid, 'RECORDED', now()
       ) returning id::text as id, opaque_click_id as "opaqueClickId"
     `);
 
@@ -178,7 +181,7 @@ export async function updateCustomerBooking(args: {
   userId: string;
   planId: string;
   itemId: string;
-  status: "BOOKING_PENDING" | "CUSTOMER_CONFIRMED" | "CANCELLED";
+  status: "BOOKING_PENDING" | "USER_REPORTED" | "CANCELLED";
   finalPrice?: number | null;
   currency?: string | null;
   bookedAt?: Date | null;
@@ -208,8 +211,8 @@ export async function updateCustomerBooking(args: {
       and p.user_id = ${args.userId}::uuid
       and (
         (${args.status} = 'BOOKING_PENDING' and b.status = 'CLICKED') or
-        (${args.status} = 'CUSTOMER_CONFIRMED' and b.status in ('NOT_SELECTED','SELECTED','CLICKED','BOOKING_PENDING')) or
-        (${args.status} = 'CANCELLED' and b.status in ('CLICKED','BOOKING_PENDING','CUSTOMER_CONFIRMED','PROVIDER_CONFIRMED'))
+        (${args.status} = 'USER_REPORTED' and b.status in ('NOT_SELECTED','SELECTED','CLICKED','AWAITING_PROVIDER','BOOKING_PENDING')) or
+        (${args.status} = 'CANCELLED' and b.status in ('CLICKED','AWAITING_PROVIDER','BOOKING_PENDING','USER_REPORTED','CUSTOMER_CONFIRMED','PROVIDER_CONFIRMED'))
       )
     returning b.id::text as id, b.status, b.version
   `);
@@ -293,11 +296,11 @@ export async function getControlCentreWorkspace(userId: string, planId: string):
     prisma.$queryRaw<Array<{ spent: number }>>(Prisma.sql`select coalesce(sum(amount),0)::float8 as spent from public.trip_expenses where user_id=${userId}::uuid and plan_id=${planId}::uuid`),
   ]);
   const normalizedItems = items.map((item: any) => ({ ...item, priceLabel: item.priceType ? getPriceDisplay({ type: item.priceType, checkedAt: item.checkedAt }).label : "Price unavailable" }));
-  const confirmedKinds = new Set(normalizedItems.filter((item) => ["CUSTOMER_CONFIRMED","PROVIDER_CONFIRMED"].includes(item.bookingStatus)).map((item) => item.kind.toLowerCase()));
+  const confirmedKinds = new Set(normalizedItems.filter((item) => item.bookingStatus === "PROVIDER_CONFIRMED").map((item) => item.kind.toLowerCase()));
   const taskPercent = (category: string) => { const rows=tasks.filter((task)=>task.category===category); return rows.length ? Math.round(rows.filter((task)=>task.status==="COMPLETED").length/rows.length*100) : 0; };
   const packed = packing.length ? Math.round(packing.filter((item)=>item.packed).length/packing.length*100) : 0;
   const planned=budgets[0]?.planned || 0, spent=expenses[0]?.spent || 0;
-  const readiness = calculateReadiness({ transport: confirmedKinds.has("flight")||confirmedKinds.has("transport")?100:0, accommodation: confirmedKinds.has("hotel")||confirmedKinds.has("stay")?100:0, activities: normalizedItems.some((item)=>item.bookingStatus.includes("CONFIRMED"))?100:0, documents: taskPercent("documents"), packing: packed, insurance: taskPercent("insurance"), connectivity: taskPercent("connectivity"), budget: planned>0&&spent<=planned?100:planned>0?50:0, airportTransfers: taskPercent("airportTransfers") });
+  const readiness = calculateReadiness({ transport: confirmedKinds.has("flight")||confirmedKinds.has("transport")?100:0, accommodation: confirmedKinds.has("hotel")||confirmedKinds.has("stay")?100:0, activities: normalizedItems.some((item)=>item.bookingStatus==="PROVIDER_CONFIRMED")?100:0, documents: taskPercent("documents"), packing: packed, insurance: taskPercent("insurance"), connectivity: taskPercent("connectivity"), budget: planned>0&&spent<=planned?100:planned>0?50:0, airportTransfers: taskPercent("airportTransfers") });
   const nextAction = readiness.missing.length ? `Complete ${readiness.missing[0].replace(/([A-Z])/g," $1").toLowerCase()}` : "Your trip is ready";
   await prisma.$executeRaw(Prisma.sql`insert into public.trip_readiness_snapshots (user_id,plan_id,input_version,score,categories,missing_actions,next_action) values (${userId}::uuid,${planId}::uuid,${trip.version},${readiness.score},${JSON.stringify(readiness.categories)}::jsonb,${JSON.stringify(readiness.missing)}::jsonb,${nextAction}) on conflict (plan_id,input_version) do update set score=excluded.score,categories=excluded.categories,missing_actions=excluded.missing_actions,next_action=excluded.next_action,created_at=now()`);
   return { trip, items: normalizedItems, tasks, packing, budget: { planned, spent, remaining: planned-spent, currency: budgets[0]?.currency||"USD" }, readiness: { score: readiness.score, missing: readiness.missing, nextAction } };

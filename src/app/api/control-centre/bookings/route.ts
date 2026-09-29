@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
   }
 
   const status = input.response === "YES_BOOKED" || input.response === "OTHER_PROVIDER"
-    ? "CUSTOMER_CONFIRMED"
+    ? "USER_REPORTED"
     : input.response === "NOT_YET" || input.response === "REMIND_LATER"
       ? "BOOKING_PENDING"
       : "BOOKING_PENDING";
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     status,
     finalPrice: input.finalPrice,
     currency: input.currency,
-    bookedAt: input.bookedAt ? new Date(input.bookedAt) : status === "CUSTOMER_CONFIRMED" ? new Date() : null,
+    bookedAt: input.bookedAt ? new Date(input.bookedAt) : status === "USER_REPORTED" ? new Date() : null,
     bookingReferenceCiphertext: input.bookingReference ? encryptBookingReference(input.bookingReference) : null,
     cancellationDeadline: input.cancellationDeadline ? new Date(input.cancellationDeadline) : null,
     notes: input.notes,

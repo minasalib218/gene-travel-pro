@@ -33,9 +33,11 @@ export default async function MyTripsPage() {
 
   const profile = await ensureUserProfile(data.user);
   const userId = data.user.id;
-  const [hasBookings, hasClicks, hasDocuments, hasSavedItems, planColumns, planDayColumns, planItemColumns] = await Promise.all([
+  const [hasBookings, hasClicks, hasTrackedBookings, hasTrackedClicks, hasDocuments, hasSavedItems, planColumns, planDayColumns, planItemColumns] = await Promise.all([
     tableExists("bookings").catch(() => false),
     tableExists("booking_clicks").catch(() => false),
+    tableExists("trip_booking_records").catch(() => false),
+    tableExists("trip_affiliate_clicks").catch(() => false),
     tableExists("travel_documents").catch(() => false),
     tableExists("saved_items").catch(() => false),
     getTableColumns("plans"),
@@ -47,7 +49,7 @@ export default async function MyTripsPage() {
     && ["planId", "dayIndex"].every((column) => planDayColumns.includes(column))
     && ["planDayId", "imageUrl"].every((column) => planItemColumns.includes(column));
 
-  const [plans, bookingRows, clickRows, documents, savedReadyRows] = await Promise.all([
+  const [plans, bookingRows, clickRows, trackedBookingRows, trackedClickRows, documents, savedReadyRows] = await Promise.all([
     hasCustomerPlans ? prisma.plan.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" },
@@ -60,6 +62,8 @@ export default async function MyTripsPage() {
     }) : [],
     hasBookings ? prisma.booking.findMany({ where: { userId }, select: { id: true, planId: true, status: true } }) : [],
     hasClicks ? prisma.bookingClick.findMany({ where: { userId }, select: { id: true, planId: true } }) : [],
+    hasTrackedBookings ? prisma.$queryRaw<Array<{ id: string; planId: string; status: string }>>(Prisma.sql`select id::text,plan_id::text as "planId",status from public.trip_booking_records where user_id=${userId}::uuid`) : [],
+    hasTrackedClicks ? prisma.$queryRaw<Array<{ id: string; planId: string }>>(Prisma.sql`select id::text,plan_id::text as "planId" from public.trip_affiliate_clicks where user_id=${userId}::uuid`) : [],
     hasDocuments
       ? prisma.$queryRaw<Array<{ tripId: string | null; expiryDate: Date | null }>>(
           Prisma.sql`
@@ -87,8 +91,9 @@ export default async function MyTripsPage() {
     const meta = getGeneTripMeta(plan.inputsJson);
     const dayCount = plan.days.length;
     const itemCount = plan.days.reduce((sum, day) => sum + day.items.length, 0);
-    const booked = bookingRows.filter((row) => row.planId === plan.id && !["CANCELLED", "CANCELED"].includes(row.status.toUpperCase())).length;
-    const selected = Math.max(itemCount, clickRows.filter((row) => row.planId === plan.id).length, booked);
+    const booked = bookingRows.filter((row) => row.planId === plan.id && !["CANCELLED", "CANCELED"].includes(row.status.toUpperCase())).length
+      + trackedBookingRows.filter((row) => row.planId === plan.id && row.status === "PROVIDER_CONFIRMED").length;
+    const selected = Math.max(itemCount, clickRows.filter((row) => row.planId === plan.id).length + trackedClickRows.filter((row) => row.planId === plan.id).length, booked);
     const travelersCount = meta.travelersCount || numberFrom(inputs, "travelersCount", "adults");
     const datesSelected = meta.datesSelected !== false;
     const displayStatus = classifyTrip({ status: plan.status, startDate: plan.startDate, endDate: plan.endDate, meta });

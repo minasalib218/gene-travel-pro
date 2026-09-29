@@ -179,7 +179,7 @@ export default function BookingsRemindersClient({ profile, initialData }: Props)
       title: item.itemName,
       subtitle: item.destination || item.provider || item.itemType || "Selected travel item",
       date: asDate(metadataText(item.metadata, "travelDate", "startDate", "date")) || asDate(item.clickedAt) || new Date(),
-      status: "SELECTED",
+      status: metadataText(item.metadata, "trackingStatus") || "SELECTED",
     }));
     const savedRows = initialData.savedItems.map((item) => ({
       id: item.id,
@@ -329,7 +329,7 @@ export default function BookingsRemindersClient({ profile, initialData }: Props)
 
           <section className="mb-4 grid grid-cols-3 gap-2 sm:gap-4">
             {[
-              ["Booked", initialData.bookings.length, "bg-emerald-400/12 text-emerald-300"],
+              ["Booked", initialData.bookings.filter((item) => item.status === "PROVIDER_CONFIRMED").length, "bg-emerald-400/12 text-emerald-300"],
               ["Selected", initialData.bookingClicks.length + initialData.savedItems.length, "bg-sky-400/12 text-sky-300"],
               ["Reminders", reminders.filter((item) => item.status === "UPCOMING").length, "bg-[#ff7a00]/12 text-[#ffae64]"],
             ].map(([label, value, color]) => (

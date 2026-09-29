@@ -137,6 +137,8 @@ export async function GET(req: NextRequest) {
         itemId: customerItemId,
         provider: item.provider || "affiliate",
         sourcePage: req.headers.get("referer"),
+        sessionId,
+        affiliateProgram: item.provider || "affiliate",
       });
       if (!click) return bookingUnavailable(req, resolveOnly);
 
@@ -145,6 +147,21 @@ export async function GET(req: NextRequest) {
         anonymousId,
         sessionId,
         eventName: "affiliate_clicked",
+        eventCategory: "commerce",
+        pagePath: "/api/affiliate/redirect",
+        referrer: req.headers.get("referer"),
+        country,
+        city,
+        deviceType,
+        browser,
+        os,
+        metadata: { planId: customerPlanId, itemId: customerItemId, provider: item.provider || "affiliate" },
+      });
+      await recordAnalyticsEvent({
+        userId,
+        anonymousId,
+        sessionId,
+        eventName: "affiliate_redirect_created",
         eventCategory: "commerce",
         pagePath: "/api/affiliate/redirect",
         referrer: req.headers.get("referer"),

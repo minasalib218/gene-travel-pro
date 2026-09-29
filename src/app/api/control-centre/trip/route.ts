@@ -51,9 +51,9 @@ export async function POST(request: NextRequest) {
   } else if (input.action === "confirm-booking") {
     const existing = await prisma.$queryRaw<Array<{ status: string }>>(Prisma.sql`select status from public.trip_booking_records where user_id=${user.id}::uuid and plan_id=${input.planId}::uuid and item_id=${input.itemId}::uuid limit 1`);
     if (!existing[0]) {
-      await prisma.$executeRaw(Prisma.sql`insert into public.trip_booking_records (user_id,plan_id,item_id,status,final_price,currency,booked_at,provider_evidence) select ${user.id}::uuid,${input.planId}::uuid,${input.itemId}::uuid,'CUSTOMER_CONFIRMED',${input.finalPrice ?? null},${input.currency?.toUpperCase() ?? null},now(),${JSON.stringify({ confirmationSource: "CUSTOMER" })}::jsonb from public.customer_plan_items i join public.customer_plan_days d on d.id=i.plan_day_id where i.id=${input.itemId}::uuid and d.plan_id=${input.planId}::uuid`);
+      await prisma.$executeRaw(Prisma.sql`insert into public.trip_booking_records (user_id,plan_id,item_id,status,final_price,currency,booked_at,provider_evidence) select ${user.id}::uuid,${input.planId}::uuid,${input.itemId}::uuid,'USER_REPORTED',${input.finalPrice ?? null},${input.currency?.toUpperCase() ?? null},now(),${JSON.stringify({ confirmationSource: "CUSTOMER" })}::jsonb from public.customer_plan_items i join public.customer_plan_days d on d.id=i.plan_day_id where i.id=${input.itemId}::uuid and d.plan_id=${input.planId}::uuid`);
     } else {
-      await updateCustomerBooking({ userId: user.id, planId: input.planId, itemId: input.itemId, status: "CUSTOMER_CONFIRMED", finalPrice: input.finalPrice, currency: input.currency, bookedAt: new Date(), providerEvidence: { confirmationSource: "CUSTOMER" } });
+      await updateCustomerBooking({ userId: user.id, planId: input.planId, itemId: input.itemId, status: "USER_REPORTED", finalPrice: input.finalPrice, currency: input.currency, bookedAt: new Date(), providerEvidence: { confirmationSource: "CUSTOMER" } });
     }
   }
   const workspace = await getControlCentreWorkspace(user.id, input.planId);

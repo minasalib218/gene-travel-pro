@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/client";
 import { getTableColumns, tableExists } from "@/lib/prisma-safe";
 import { ensureUserProfile } from "@/lib/profile/ensureUserProfile";
 import { createRouteClient } from "@/lib/supabase/server";
+import { Prisma } from "@prisma/client";
 import BookingsRemindersClient from "./ui";
 
 export const dynamic = "force-dynamic";
@@ -19,9 +20,11 @@ export default async function BookingsRemindersPage({ searchParams }: { searchPa
   const profile = await ensureUserProfile(data.user);
   const userId = data.user.id;
   const requestedTripId = typeof searchParams?.tripId === "string" ? searchParams.tripId : null;
-  const [hasBookings, hasClicks, hasWishlist, hasReminders, planColumns] = await Promise.all([
+  const [hasBookings, hasClicks, hasTrackedBookings, hasTrackedClicks, hasWishlist, hasReminders, planColumns] = await Promise.all([
     tableExists("bookings").catch(() => false),
     tableExists("booking_clicks").catch(() => false),
+    tableExists("trip_booking_records").catch(() => false),
+    tableExists("trip_affiliate_clicks").catch(() => false),
     tableExists("wishlist_items").catch(() => false),
     tableExists("travel_reminders").catch(() => false),
     getTableColumns("plans"),
@@ -33,7 +36,7 @@ export default async function BookingsRemindersPage({ searchParams }: { searchPa
     : null;
   const tripId = selectedTrip?.id || null;
 
-  const [trips, bookings, bookingClicks, savedItems, reminders] = await Promise.all([
+  const [trips, bookings, bookingClicks, trackedBookings, trackedClicks, savedItems, reminders] = await Promise.all([
     hasCustomerPlans ? prisma.plan.findMany({
       where: { userId },
       orderBy: { startDate: "asc" },
@@ -84,6 +87,32 @@ export default async function BookingsRemindersPage({ searchParams }: { searchPa
           },
         })
       : [],
+    hasTrackedBookings
+      ? prisma.$queryRaw<Array<{ id: string; provider: string; status: string; travelDate: Date | null; bookingDate: Date | null; amount: number | null; currency: string | null; planId: string; metadata: unknown; createdAt: Date }>>(Prisma.sql`
+          select b.id::text, coalesce(b.provider, i.provider, 'Travel provider') as provider,
+            b.status, b.travel_start_at as "travelDate", b.booked_at as "bookingDate",
+            b.final_price::float8 as amount, b.currency, b.plan_id::text as "planId",
+            jsonb_build_object('title', coalesce(i.title, 'Travel booking'), 'source', 'secure_affiliate_tracking') as metadata,
+            b.created_at as "createdAt"
+          from public.trip_booking_records b
+          left join public.customer_plan_items i on i.id=b.item_id
+          where b.user_id=${userId}::uuid ${tripId ? Prisma.sql`and b.plan_id=${tripId}::uuid` : Prisma.empty}
+          order by coalesce(b.travel_start_at,b.booked_at,b.created_at) asc
+          limit 100
+        `)
+      : [],
+    hasTrackedClicks
+      ? prisma.$queryRaw<Array<{ id: string; itemName: string; itemType: string | null; destination: string | null; provider: string | null; clickedAt: Date; planId: string; metadata: unknown }>>(Prisma.sql`
+          select c.id::text, coalesce(i.title,'Travel item') as "itemName", i.kind as "itemType",
+            p.destination, c.provider, c.created_at as "clickedAt", c.plan_id::text as "planId",
+            jsonb_build_object('trackingStatus',c.status,'subId',c.opaque_click_id) as metadata
+          from public.trip_affiliate_clicks c
+          left join public.customer_plan_items i on i.id=c.item_id
+          left join public.customer_plans p on p.id=c.plan_id
+          where c.user_id=${userId}::uuid ${tripId ? Prisma.sql`and c.plan_id=${tripId}::uuid` : Prisma.empty}
+          order by c.created_at desc limit 100
+        `)
+      : [],
     hasWishlist
       ? prisma.wishlistItem.findMany({
           where: { userId, status: { not: "REMOVED" } },
@@ -133,8 +162,8 @@ export default async function BookingsRemindersPage({ searchParams }: { searchPa
       }}
       initialData={{
         trips: tripId ? trips.filter((trip) => trip.id === tripId) : trips,
-        bookings,
-        bookingClicks,
+        bookings: [...trackedBookings, ...bookings],
+        bookingClicks: [...trackedClicks, ...bookingClicks],
         savedItems,
         reminders: tripId
           ? reminders.filter((reminder) => {
