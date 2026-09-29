@@ -561,7 +561,10 @@ export async function GET(req: NextRequest) {
             subId: `${planId}:${itemKey}`,
           })
         : sourceUrl;
-    const destinationUrl = getSafeAffiliateUrl(convertedUrl);
+    const destinationUrl =
+      sourceUrl && convertedUrl && convertedUrl !== sourceUrl
+        ? getSafeStoredAffiliateUrl(convertedUrl)
+        : getSafeAffiliateUrl(convertedUrl);
     if (!destinationUrl) {
       return NextResponse.json({ ok: false, message: "Booking link is not available yet. Please try another option." }, { status: 404 });
     }
