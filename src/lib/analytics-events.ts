@@ -102,6 +102,10 @@ const ALLOWED_ANALYTICS_EVENTS = new Set([
   "wishlist_item_saved",
   "wishlist_item_removed",
   "signup_started",
+  "signup_popup_viewed",
+  "signup_popup_closed",
+  "signup_popup_signup_clicked",
+  "signup_popup_signin_clicked",
 ]);
 
 const SENSITIVE_METADATA_KEYS = [

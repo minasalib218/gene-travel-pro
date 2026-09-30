@@ -74,7 +74,11 @@ export type GeneAnalyticsEventName =
   | "reminder_completed"
   | "signup_started"
   | "signup_completed"
-  | "login_completed";
+  | "login_completed"
+  | "signup_popup_viewed"
+  | "signup_popup_closed"
+  | "signup_popup_signup_clicked"
+  | "signup_popup_signin_clicked";
 
 const SESSION_KEY = "gene:analytics:session-id";
 const ANONYMOUS_KEY = "gene:analytics:anonymous-id";

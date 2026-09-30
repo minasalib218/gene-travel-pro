@@ -7,6 +7,7 @@ import { LanguageProvider } from "@/components/i18n/LanguageProvider";
 import MetaPixel from "@/components/analytics/MetaPixel";
 import GoogleAnalytics from "@/components/analytics/GoogleAnalytics";
 import AnalyticsRuntime from "@/components/analytics/AnalyticsRuntime";
+import NewVisitorSignupModal from "@/components/marketing/NewVisitorSignupModal";
 import { absoluteImageUrl, buildSeoMetadata, jsonLdScript, SITE_NAME, SITE_URL } from "@/lib/seo";
 
 const titleFont = localFont({
@@ -97,6 +98,7 @@ export default function RootLayout({children}:{children:ReactNode}){
           <GoogleAnalytics />
           <Suspense fallback={null}>
             <AnalyticsRuntime />
+            <NewVisitorSignupModal />
           </Suspense>
           {children}
         </LanguageProvider>
