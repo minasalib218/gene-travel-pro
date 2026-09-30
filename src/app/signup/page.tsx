@@ -56,7 +56,8 @@ function SignUpPageContent() {
   const router = useRouter();
   const search = useSearchParams();
   const paymentSuccess = search.get("payment") === "success";
-  const next = search.get("next") || "/pricing";
+  const requestedNext = search.get("next") || "/pricing";
+  const next = requestedNext.startsWith("/") && !requestedNext.startsWith("//") ? requestedNext : "/pricing";
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -66,6 +67,7 @@ function SignUpPageContent() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [errorTop, setErrorTop] = useState<string | null>(null);
   const [agreedToPolicies, setAgreedToPolicies] = useState(false);
@@ -191,6 +193,12 @@ function SignUpPageContent() {
     }
   }
 
+  function signUpWithGoogle() {
+    setErrorTop(null);
+    setGoogleLoading(true);
+    window.location.assign(`/api/auth/google?next=${encodeURIComponent(next)}`);
+  }
+
   return (
     <main className="relative min-h-screen overflow-hidden text-white">
       <div className="absolute inset-0 -z-10">
@@ -266,7 +274,20 @@ function SignUpPageContent() {
             </div>
           ) : null}
 
-          <form onSubmit={onSubmit} autoComplete="off" className="mt-6 space-y-4">
+          <button
+            type="button"
+            onClick={signUpWithGoogle}
+            disabled={loading || googleLoading}
+            className="mt-6 flex min-h-12 w-full items-center justify-center gap-3 rounded-full border border-white/16 bg-white/8 px-5 text-sm font-semibold text-white transition hover:border-white/30 hover:bg-white/12 disabled:opacity-60"
+          >
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white font-bold text-[#4285f4]">G</span>
+            {googleLoading ? "Opening Google..." : "Continue with Google"}
+          </button>
+          <div className="my-5 flex items-center gap-3 text-[11px] uppercase tracking-[0.18em] text-white/38">
+            <span className="h-px flex-1 bg-white/10" />or create with email<span className="h-px flex-1 bg-white/10" />
+          </div>
+
+          <form onSubmit={onSubmit} autoComplete="off" className="space-y-4">
             <input type="text" name="gene-fake-user" autoComplete="username" className="hidden" tabIndex={-1} />
             <input type="password" name="gene-fake-pass" autoComplete="new-password" className="hidden" tabIndex={-1} />
             <Field
