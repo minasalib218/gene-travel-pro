@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 type Props = {
   travelPreference?: any;
+  mode?: "all" | "preferences" | "documents" | "support" | "reminders";
 };
 
 const inputClass =
@@ -12,7 +13,7 @@ const inputClass =
 const buttonClass =
   "rounded-xl bg-[#ff7a00] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#ff8d25] disabled:cursor-not-allowed disabled:opacity-55";
 
-export default function ProfileActionPanel({ travelPreference }: Props) {
+export default function ProfileActionPanel({ travelPreference, mode = "all" }: Props) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -128,7 +129,7 @@ export default function ProfileActionPanel({ travelPreference }: Props) {
         </div>
       ) : null}
 
-      <details className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+      {mode === "all" || mode === "preferences" ? <details open={mode === "preferences"} className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
         <summary className="cursor-pointer text-sm font-bold text-white">Update travel preferences</summary>
         <form action={savePreferences} className="mt-4 grid gap-3 md:grid-cols-2">
           <input className={inputClass} name="travelStyles" placeholder="Styles: adventure, luxury" defaultValue={(travelPreference?.travelStyles || []).join(", ")} />
@@ -143,9 +144,9 @@ export default function ProfileActionPanel({ travelPreference }: Props) {
             {busy === "/api/profile/preferences" ? "Saving..." : "Save Preferences"}
           </button>
         </form>
-      </details>
+      </details> : null}
 
-      <details className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+      {mode === "all" || mode === "reminders" ? <details open={mode === "reminders"} className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
         <summary className="cursor-pointer text-sm font-bold text-white">Add booking or trip reminder</summary>
         <form action={addReminder} className="mt-4 grid gap-3 md:grid-cols-2">
           <input className={inputClass} name="title" required placeholder="Reminder title" />
@@ -166,9 +167,9 @@ export default function ProfileActionPanel({ travelPreference }: Props) {
             {busy === "/api/profile/reminders" ? "Adding..." : "Add Reminder"}
           </button>
         </form>
-      </details>
+      </details> : null}
 
-      <details className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+      {mode === "all" || mode === "documents" ? <details open={mode === "documents"} className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
         <summary className="cursor-pointer text-sm font-bold text-white">Upload private travel document</summary>
         <form action={uploadDocument} className="mt-4 grid gap-3 md:grid-cols-2">
           <input className={inputClass} name="displayName" required placeholder="Document name" />
@@ -188,9 +189,9 @@ export default function ProfileActionPanel({ travelPreference }: Props) {
             {busy === "/api/profile/documents/upload" ? "Uploading..." : "Upload Document"}
           </button>
         </form>
-      </details>
+      </details> : null}
 
-      <details className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+      {mode === "all" || mode === "support" ? <details open={mode === "support"} className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
         <summary className="cursor-pointer text-sm font-bold text-white">Contact support</summary>
         <form action={openTicket} className="mt-4 grid gap-3">
           <input className={inputClass} name="subject" required placeholder="Subject" />
@@ -204,7 +205,7 @@ export default function ProfileActionPanel({ travelPreference }: Props) {
             {busy === "/api/profile/support" ? "Sending..." : "Send Support Ticket"}
           </button>
         </form>
-      </details>
+      </details> : null}
     </div>
   );
 }

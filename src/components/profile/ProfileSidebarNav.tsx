@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import {
   Bell,
   Briefcase,
@@ -17,55 +17,24 @@ import {
   Sparkles,
   Tag,
   User,
+  ListChecks,
 } from "lucide-react";
 
 const sectionItems = [
-  { icon: User, label: "My Profile", section: "profile-overview" },
+  { icon: User, label: "My Profile", section: "profile-overview", href: "/profile" },
   { icon: Briefcase, label: "My Trips", section: "my-trips", href: "/profile/trips" },
-  { icon: Heart, label: "Favorite Plans", section: "favorite-plans" },
+  { icon: Heart, label: "Favourite Plans", section: "favorite-plans", href: "/profile/favorites" },
   { icon: CalendarDays, label: "Bookings & Reminders", section: "bookings-reminders", href: "/profile/bookings-reminders" },
-  { icon: Coins, label: "My Credits", section: "my-credits" },
-  { icon: Settings2, label: "Travel Preferences", section: "travel-preferences" },
-  { icon: FileText, label: "Travel Documents", section: "travel-documents" },
-  { icon: Tag, label: "Special Offers", section: "special-offers", badge: "NEW" },
-  { icon: Bell, label: "Notifications", section: "notifications" },
-  { icon: Headphones, label: "Support", section: "support" },
-  { icon: ShieldCheck, label: "Account & Security", section: "account-security" },
+  { icon: Coins, label: "My Credits", section: "my-credits", href: "/profile/credits" },
+  { icon: Tag, label: "Special Offers", section: "special-offers", href: "/profile/offers" },
+  { icon: ListChecks, label: "Checklist", section: "checklist", href: "/profile/checklist" },
+  { icon: CalendarDays, label: "Calendar of the Year", section: "calendar", href: "/profile/calendar" },
+  { icon: Settings2, label: "Travel Preferences", section: "travel-preferences", href: "/profile/preferences" },
+  { icon: FileText, label: "Travel Documents", section: "travel-documents", href: "/profile/documents" },
+  { icon: Bell, label: "Notifications", section: "notifications", href: "/profile/notifications" },
+  { icon: Headphones, label: "Support", section: "support", href: "/profile/support" },
+  { icon: ShieldCheck, label: "Account & Security", section: "account-security", href: "/profile/security" },
 ];
-
-function NavButton({
-  icon: Icon,
-  label,
-  active,
-  badge,
-  onClick,
-}: {
-  icon: any;
-  label: string;
-  active?: boolean;
-  badge?: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex w-full items-center gap-4 rounded-xl px-5 py-4 text-left text-sm transition ${
-        active
-          ? "border-l-4 border-[#ff7a00] bg-[#ff7a00]/14 text-[#ff7a00]"
-          : "text-white/82 hover:bg-white/[0.06] hover:text-white"
-      }`}
-    >
-      <Icon className="h-5 w-5 shrink-0" />
-      <span className="flex-1">{label}</span>
-      {badge ? (
-        <span className="rounded-full bg-[#ff7a00] px-2 py-1 text-[10px] font-bold text-white">
-          {badge}
-        </span>
-      ) : null}
-    </button>
-  );
-}
 
 export default function ProfileSidebarNav({
   createPlanHref,
@@ -76,79 +45,29 @@ export default function ProfileSidebarNav({
   activePage?: string;
   showControlCentre?: boolean;
 }) {
-  const [activeSection, setActiveSection] = useState("profile-overview");
-
-  useEffect(() => {
-    const nodes = sectionItems
-      .map((item) => document.getElementById(item.section))
-      .filter((node): node is HTMLElement => Boolean(node));
-
-    if (!nodes.length) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-
-        if (visible?.target?.id) setActiveSection(visible.target.id);
-      },
-      { rootMargin: "-95px 0px -55% 0px", threshold: [0.15, 0.35, 0.6] },
-    );
-
-    nodes.forEach((node) => observer.observe(node));
-    return () => observer.disconnect();
-  }, []);
-
-  function goToSection(section: string) {
-    const node = document.getElementById(section);
-    if (!node) return;
-
-    setActiveSection(section);
-    window.history.replaceState(null, "", `#${section}`);
-    node.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
+  const pathname = usePathname();
+  const isActive = (href: string, section: string) => {
+    if (activePage) return activePage === section;
+    if (href === "/profile") return pathname === href;
+    return pathname === href || pathname.startsWith(`${href}/`);
+  };
 
   return (
     <>
       <nav className="space-y-1 px-3">
         {sectionItems.slice(0, 2).map((item) => {
-          if (item.href) {
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.section}
-                href={item.href}
-                className={`flex items-center gap-4 rounded-xl px-5 py-4 text-sm transition ${
-                  activePage === item.section
-                    ? "border-l-4 border-[#ff7a00] bg-[#ff7a00]/14 text-[#ff7a00]"
-                    : "text-white/82 hover:bg-white/[0.06] hover:text-white"
-                }`}
-              >
-                <Icon className="h-5 w-5 shrink-0" />
-                <span className="flex-1">{item.label}</span>
-              </Link>
-            );
-          }
+          const Icon = item.icon;
+          const selected = isActive(item.href, item.section);
           return (
-            <NavButton
-              key={item.section}
-              icon={item.icon}
-              label={item.label}
-              active={!activePage && activeSection === item.section}
-              onClick={() => {
-                if (activePage) {
-                  window.location.href = `/profile#${item.section}`;
-                  return;
-                }
-                goToSection(item.section);
-              }}
-            />
+            <Link key={item.section} href={item.href} aria-current={selected ? "page" : undefined} className={`flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm transition ${selected ? "border border-[#ff7a00]/55 bg-[#ff7a00]/12 text-white shadow-[0_0_24px_rgba(255,122,0,.12)]" : "border border-transparent text-white/76 hover:bg-white/[0.06] hover:text-white"}`}>
+              <Icon className={`h-5 w-5 shrink-0 ${selected ? "text-[#ff7a00]" : ""}`} />
+              <span className="min-w-0 flex-1 truncate">{item.label}</span>
+            </Link>
           );
         })}
         <Link
           href={createPlanHref}
-          className={`flex items-center gap-4 rounded-xl px-5 py-4 text-sm transition ${
+          className={`flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm transition ${
             activePage === "create-plan"
               ? "border-l-4 border-[#ff7a00] bg-[#ff7a00]/14 text-[#ff7a00]"
               : "text-white/82 hover:bg-white/[0.06] hover:text-white"
@@ -160,7 +79,7 @@ export default function ProfileSidebarNav({
         {showControlCentre ? (
           <Link
             href="/profile/control-centre"
-            className={`flex items-center gap-4 rounded-xl px-5 py-4 text-sm transition ${
+            className={`flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm transition ${
               activePage === "control-centre"
                 ? "border-l-4 border-[#ff7a00] bg-[#ff7a00]/14 text-[#ff7a00]"
                 : "text-white/82 hover:bg-white/[0.06] hover:text-white"
@@ -171,39 +90,13 @@ export default function ProfileSidebarNav({
           </Link>
         ) : null}
         {sectionItems.slice(2).map((item) => {
-          if (item.href) {
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.section}
-                href={item.href}
-                className={`flex items-center gap-4 rounded-xl px-5 py-4 text-sm transition ${
-                  activePage === item.section
-                    ? "border-l-4 border-[#ff7a00] bg-[#ff7a00]/14 text-[#ff7a00]"
-                    : "text-white/82 hover:bg-white/[0.06] hover:text-white"
-                }`}
-              >
-                <Icon className="h-5 w-5 shrink-0" />
-                <span className="flex-1">{item.label}</span>
-              </Link>
-            );
-          }
-
+          const Icon = item.icon;
+          const selected = isActive(item.href, item.section);
           return (
-            <NavButton
-              key={item.section}
-              icon={item.icon}
-              label={item.label}
-              badge={item.badge}
-              active={activeSection === item.section}
-              onClick={() => {
-                if (activePage) {
-                  window.location.href = `/profile#${item.section}`;
-                  return;
-                }
-                goToSection(item.section);
-              }}
-            />
+            <Link key={item.section} href={item.href} aria-current={selected ? "page" : undefined} className={`flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm transition ${selected ? "border border-[#ff7a00]/55 bg-[#ff7a00]/12 text-white shadow-[0_0_24px_rgba(255,122,0,.12)]" : "border border-transparent text-white/76 hover:bg-white/[0.06] hover:text-white"}`}>
+              <Icon className={`h-5 w-5 shrink-0 ${selected ? "text-[#ff7a00]" : ""}`} />
+              <span className="min-w-0 flex-1 truncate">{item.label}</span>
+            </Link>
           );
         })}
       </nav>
@@ -211,7 +104,7 @@ export default function ProfileSidebarNav({
       <div className="mt-auto border-t border-white/8 px-3 pb-5 pt-4">
         <Link
           href="/api/auth/logout"
-          className="flex items-center gap-4 rounded-xl px-5 py-4 text-sm text-white/82 transition hover:bg-white/[0.06] hover:text-white"
+          className="flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm text-white/82 transition hover:bg-white/[0.06] hover:text-white"
         >
           <LogOut className="h-5 w-5 shrink-0" />
           <span className="flex-1">Log Out</span>

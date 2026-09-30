@@ -121,6 +121,8 @@ function StatCard({
 function TripCard({ trip, index }: { trip: any; index: number }) {
   const title = trip?.title || "Untitled trip";
   const destination = trip?.destination || "Destination not set";
+  const travelers = Number(trip?.travelersCount || trip?.summaryJson?.travelersCount || 0);
+  const status = typeof trip?.status === "string" ? trip.status.replaceAll("_", " ") : null;
 
   return (
     <Link
@@ -144,12 +146,10 @@ function TripCard({ trip, index }: { trip: any; index: number }) {
         <div className="text-base font-bold text-white">{title}</div>
         <div className="mt-2 flex flex-wrap gap-4 text-xs text-white/70">
           <span>{destination}</span>
-          <span>2 travelers</span>
+          {travelers > 0 ? <span>{travelers} {travelers === 1 ? "traveler" : "travelers"}</span> : null}
         </div>
         <div className="mt-4 flex items-center justify-between">
-          <span className="rounded-full bg-emerald-500/18 px-3 py-1 text-xs font-semibold text-emerald-300">
-            Confirmed
-          </span>
+          {status ? <span className="rounded-full bg-[#ff7a00]/14 px-3 py-1 text-xs font-semibold capitalize text-[#ffb36c]">{status.toLowerCase()}</span> : <span className="text-xs text-white/45">Saved trip</span>}
           <ChevronRight className="h-5 w-5 text-white/70" />
         </div>
       </div>
@@ -254,25 +254,18 @@ export default function ProfileDashboard({ data }: Props) {
               <Link href="/" className="lg:hidden">
                 <GeneLogo imageClassName="h-auto w-[118px]" />
               </Link>
-              <nav className="hidden flex-1 justify-center gap-9 text-sm font-medium text-white/86 md:flex">
-                <Link href="/">Explore</Link>
-                <Link href="/ready-plans">Ready Plans</Link>
-                <Link href={createPlanHref}>Create Plan</Link>
-                <Link href="/destinations">Destinations</Link>
-                <Link href="/offers">Offers</Link>
-              </nav>
-              <div className="ml-auto flex items-center gap-4">
-                <div className="hidden md:block">
+              <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-4">
+                <div className="hidden min-w-0 md:block">
                   <GlobalSearch scope="profile" placeholder="Search your trips, favorites, reminders..." />
                 </div>
-                <a className="relative" href="#notifications" aria-label="Open notifications">
+                <Link className="relative" href="/profile/notifications" aria-label="Open notifications">
                   <Bell className="h-5 w-5 text-white/82" />
                   {unreadNotificationsCount > 0 ? (
                     <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#ff7a00] px-1 text-[10px] font-bold text-white">
                       {unreadNotificationsCount > 9 ? "9+" : unreadNotificationsCount}
                     </span>
                   ) : null}
-                </a>
+                </Link>
                 <div className="relative h-11 w-11 overflow-hidden rounded-full border border-white/18 bg-white/10">
                   {profile?.avatarUrl ? (
                     <Image src={profile.avatarUrl} alt={profile.fullName || "Profile"} fill className="object-cover" />
@@ -337,8 +330,8 @@ export default function ProfileDashboard({ data }: Props) {
             <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
               <StatCard icon={Coins} iconClass="bg-[#ff9f1a]/18 text-[#ff9f1a]" title="Plan Credits" value={creditText} progress={progress} />
               <StatCard icon={Plane} iconClass="bg-sky-400/15 text-sky-300" title="Upcoming Trips" value={String(confirmedTrips.length)} note="Open My Trips" href="/profile/trips" />
-              <StatCard icon={Heart} iconClass="bg-rose-400/15 text-rose-300" title="Favorite Plans" value={String(favoritePlans.length || savedReadyPlans.length)} note="View all" />
-              <StatCard icon={BookOpen} iconClass="bg-emerald-400/15 text-emerald-300" title="Saved Items" value={String(savedItemCount)} note="View all" />
+              <StatCard icon={Heart} iconClass="bg-rose-400/15 text-rose-300" title="Favorite Plans" value={String(favoritePlans.length || savedReadyPlans.length)} note="View all" href="/profile/favorites" />
+              <StatCard icon={BookOpen} iconClass="bg-emerald-400/15 text-emerald-300" title="Saved Items" value={String(savedItemCount)} note="View all" href="/profile/favorites" />
             </section>
 
             <GlassCard id="profile-tools" className="scroll-mt-24 rounded-2xl p-4 sm:p-5">
@@ -423,7 +416,7 @@ export default function ProfileDashboard({ data }: Props) {
 
             <section className="grid gap-5 xl:grid-cols-2">
               <GlassCard id="my-credits" className="scroll-mt-24 rounded-2xl p-5">
-                <SectionHeader icon={Coins} title="My Credits" />
+                <SectionHeader icon={Coins} title="My Credits" href="/profile/credits" />
                 <div className="grid gap-3 sm:grid-cols-3">
                   <div className="rounded-xl bg-white/[0.045] p-4">
                     <div className="text-xs text-white/55">Main credits</div>
@@ -453,7 +446,7 @@ export default function ProfileDashboard({ data }: Props) {
               </GlassCard>
 
               <GlassCard id="travel-preferences" className="scroll-mt-24 rounded-2xl p-5">
-                <SectionHeader icon={Settings2} title="Travel Preferences" />
+                <SectionHeader icon={Settings2} title="Travel Preferences" href="/profile/preferences" />
                 {!travelPreference ? (
                   <EmptyState>No preferences saved yet. Gene will fill this from your AI planner choices and profile edits.</EmptyState>
                 ) : (
@@ -483,7 +476,7 @@ export default function ProfileDashboard({ data }: Props) {
 
             <section className="grid gap-5 xl:grid-cols-2">
               <GlassCard id="travel-documents" className="scroll-mt-24 rounded-2xl p-5">
-                <SectionHeader icon={FileText} title="Travel Documents" />
+                <SectionHeader icon={FileText} title="Travel Documents" href="/profile/documents" />
                 {travelDocuments.length === 0 ? (
                   <EmptyState>No private travel documents saved yet. When documents are added, only metadata appears here; files stay private in storage.</EmptyState>
                 ) : (
@@ -502,7 +495,7 @@ export default function ProfileDashboard({ data }: Props) {
               </GlassCard>
 
               <GlassCard id="notifications" className="scroll-mt-24 rounded-2xl p-5">
-                <SectionHeader icon={Bell} title="Notifications" />
+                <SectionHeader icon={Bell} title="Notifications" href="/profile/notifications" />
                 {notifications.length === 0 ? (
                   <EmptyState>No notifications yet. Trip reminders, credit updates and support responses will appear here.</EmptyState>
                 ) : (
@@ -533,7 +526,7 @@ export default function ProfileDashboard({ data }: Props) {
 
             <section className="grid gap-5 xl:grid-cols-2">
               <GlassCard id="support" className="scroll-mt-24 rounded-2xl p-5">
-                <SectionHeader icon={Headphones} title="Support" />
+                <SectionHeader icon={Headphones} title="Support" href="/profile/support" />
                 {supportTickets.length === 0 ? (
                   <EmptyState>No support tickets yet. Messages sent from this profile will connect to the admin support dashboard.</EmptyState>
                 ) : (
@@ -552,7 +545,7 @@ export default function ProfileDashboard({ data }: Props) {
               </GlassCard>
 
               <GlassCard id="account-security" className="scroll-mt-24 rounded-2xl p-5">
-                <SectionHeader icon={ShieldCheck} title="Account & Security" />
+                <SectionHeader icon={ShieldCheck} title="Account & Security" href="/profile/security" />
                 <div className="space-y-3 text-sm">
                   <div className="rounded-xl bg-white/[0.04] p-4">
                     <div className="text-xs uppercase tracking-[0.16em] text-white/45">Account email</div>
@@ -567,6 +560,16 @@ export default function ProfileDashboard({ data }: Props) {
                       <div className="text-xs uppercase tracking-[0.16em] text-white/45">Member since</div>
                       <div className="mt-2 font-semibold text-white">{formatDate(profile?.createdAt)}</div>
                     </div>
+                    <div className="rounded-xl bg-white/[0.04] p-4">
+                      <div className="text-xs uppercase tracking-[0.16em] text-white/45">Email verification</div>
+                      <div className={`mt-2 font-semibold ${profile?.emailVerified ? "text-emerald-300" : "text-amber-300"}`}>
+                        {profile?.emailVerified ? "Verified" : "Verification pending"}
+                      </div>
+                    </div>
+                    <div className="rounded-xl bg-white/[0.04] p-4">
+                      <div className="text-xs uppercase tracking-[0.16em] text-white/45">Sign-in method</div>
+                      <div className="mt-2 font-semibold capitalize text-white">{profile?.authProvider || "Email"}</div>
+                    </div>
                   </div>
                   <Link href="/api/auth/logout" className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/16 px-5 text-sm font-semibold text-white/86 transition hover:border-[#ff7a00]/45 hover:text-white">
                     Log out securely
@@ -576,7 +579,7 @@ export default function ProfileDashboard({ data }: Props) {
             </section>
 
             <GlassCard id="special-offers" className="scroll-mt-24 rounded-2xl p-5">
-              <SectionHeader icon={Tag} title="Special Offers" href="/offers" />
+              <SectionHeader icon={Tag} title="Special Offers" href="/profile/offers" />
               {personalizedOffers.length === 0 ? (
                 <EmptyState>No live offers are published right now. New active offers from the admin dashboard will appear here automatically.</EmptyState>
               ) : (
