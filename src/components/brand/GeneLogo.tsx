@@ -16,8 +16,8 @@ export default function GeneLogo({
       <Image
         src="/images/logo.png"
         alt="Gene Travel"
-        width={200}
-        height={200}
+        width={600}
+        height={163}
         priority={priority}
         className={imageClassName}
       />

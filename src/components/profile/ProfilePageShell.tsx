@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Bell, Menu, X } from "lucide-react";
+import { Bell, Menu, Search, X } from "lucide-react";
 import { useState } from "react";
 import GeneLogo from "@/components/brand/GeneLogo";
 import GlobalSearch from "@/components/search/GlobalSearch";
@@ -53,10 +53,11 @@ export default function ProfilePageShell({
         <div className="min-w-0 flex-1">
           <header className="sticky top-0 z-40 border-b border-white/10 bg-[#07111a]/88 backdrop-blur-2xl">
             <div className="flex h-[68px] items-center gap-3 px-3 sm:px-5 lg:h-[74px] lg:px-8">
-              <button aria-label="Open profile menu" onClick={() => setMenuOpen(true)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 lg:hidden"><Menu className="h-5 w-5" /></button>
-              <Link href="/" className="shrink-0 lg:hidden"><GeneLogo imageClassName="h-auto w-[100px] sm:w-[118px]" /></Link>
+              <button aria-label="Open profile menu" onClick={() => setMenuOpen(true)} className={`h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 lg:hidden ${activePage === "checklist" ? "hidden" : "flex"}`}><Menu className="h-5 w-5" /></button>
+              <Link href="/" className="shrink-0 lg:hidden"><GeneLogo imageClassName={activePage === "checklist" ? "h-auto w-[105px] min-[360px]:w-[140px] min-[390px]:w-[160px] sm:w-[190px]" : "h-auto w-[100px] sm:w-[118px]"} /></Link>
               <div className="ml-auto hidden min-w-0 max-w-xl flex-1 md:block"><GlobalSearch scope="profile" placeholder="Search destinations, hotels, experiences..." /></div>
-              <Link href="/profile/notifications" aria-label="Open notifications" className="relative ml-auto flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 md:ml-0">
+              {activePage === "checklist" ? <a href="#checklist-search" aria-label="Search checklist" className="ml-auto flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 md:hidden"><Search className="h-5 w-5" /></a> : null}
+              <Link href="/profile/notifications" aria-label="Open notifications" className={`relative flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 md:ml-0 ${activePage === "checklist" ? "" : "ml-auto"}`}>
                 <Bell className="h-5 w-5" />
                 {unreadCount > 0 ? <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#ff7a00] px-1 text-[10px] font-bold">{unreadCount > 9 ? "9+" : unreadCount}</span> : null}
               </Link>
