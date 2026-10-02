@@ -3,11 +3,12 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { COUNTRIES } from "@/lib/countries";
 import { useLanguage } from "@/components/i18n/LanguageProvider";
 import { trackAnalyticsEvent, trackLead } from "@/lib/analytics";
 import GeneLogo from "@/components/brand/GeneLogo";
+import { safeInternalPath } from "@/lib/auth/pendingAction";
 
 const ORANGE = "#ff7a00";
 
@@ -53,11 +54,9 @@ function toISODate(d: Date) {
 
 function SignUpPageContent() {
   const { t } = useLanguage();
-  const router = useRouter();
   const search = useSearchParams();
   const paymentSuccess = search.get("payment") === "success";
-  const requestedNext = search.get("next") || "/pricing";
-  const next = requestedNext.startsWith("/") && !requestedNext.startsWith("//") ? requestedNext : "/pricing";
+  const next = safeInternalPath(search.get("next"), "/pricing");
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -187,7 +186,7 @@ function SignUpPageContent() {
         source: paymentSuccess ? "payment_success_signup" : "signup_page",
         next,
       });
-      router.push(next);
+      window.location.replace(`/auth/complete?next=${encodeURIComponent(next)}`);
     } finally {
       setLoading(false);
     }
@@ -292,6 +291,7 @@ function SignUpPageContent() {
             <input type="password" name="gene-fake-pass" autoComplete="new-password" className="hidden" tabIndex={-1} />
             <Field
               label={t("signup.fullName", "Full name")}
+              placeholder="Your full name"
               value={fullName}
               onChange={setFullName}
               error={touched.fullName ? errors.fullName : undefined}
@@ -302,6 +302,7 @@ function SignUpPageContent() {
 
             <Field
               label={t("signup.email", "Email")}
+              placeholder="you@example.com"
               value={email}
               onChange={setEmail}
               error={touched.email ? errors.email : undefined}
@@ -340,6 +341,7 @@ function SignUpPageContent() {
                 </select>
                 <input
                   name="gene-signup-phone"
+                  placeholder="Phone number"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   onBlur={() => setTouched((p) => ({ ...p, phone: true }))}
@@ -393,6 +395,7 @@ function SignUpPageContent() {
                 <input
                   type="password"
                   name="gene-signup-password"
+                  placeholder="At least 8 characters"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   onBlur={() => setTouched((p) => ({ ...p, password: true }))}
@@ -436,6 +439,7 @@ function SignUpPageContent() {
                 <input
                   type="password"
                   name="gene-signup-confirm-password"
+                  placeholder="Repeat your password"
                   value={confirm}
                   onChange={(e) => setConfirm(e.target.value)}
                   onBlur={() => setTouched((p) => ({ ...p, confirm: true }))}
@@ -529,6 +533,7 @@ function Field({
   name,
   autoCapitalize,
   spellCheck,
+  placeholder,
 }: {
   label: string;
   value: string;
@@ -540,6 +545,7 @@ function Field({
   name?: string;
   autoCapitalize?: string;
   spellCheck?: boolean;
+  placeholder?: string;
 }) {
   return (
     <div>
@@ -560,6 +566,7 @@ function Field({
           autoComplete={autoComplete}
           autoCapitalize={autoCapitalize}
           spellCheck={spellCheck}
+          placeholder={placeholder}
           data-form-type="other"
           data-lpignore="true"
         />

@@ -6,6 +6,7 @@ import Navbar from "@/components/Navbar";
 import { getPlanRules } from "@/lib/credits/planRules";
 import ProfileDashboard from "@/components/profile/ProfileDashboard";
 import { GET as getCustomerProfileResponse } from "@/app/api/profile/route";
+import { createRouteClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -396,10 +397,13 @@ function ProfileStat({
 }
 
 export default async function ProfilePage() {
+  const supabase = createRouteClient();
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  if (authError || !authData.user) redirect("/signin?next=/profile");
   const data = await getProfile();
 
   if (!data) {
-    redirect("/signin?next=/profile");
+    throw new Error("Authenticated profile data is temporarily unavailable.");
   }
 
   return <ProfileDashboard data={data} />;

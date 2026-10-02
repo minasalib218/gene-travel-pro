@@ -54,6 +54,10 @@ function redirectWithCookies(req: NextRequest, cookieSource: NextResponse, pathn
   return redirect;
 }
 
+function safeInternalPath(value: string | null) {
+  return value && value.startsWith("/") && !value.startsWith("//") && !value.includes("\\") ? value : "/profile";
+}
+
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
   const pathname = req.nextUrl.pathname;
@@ -69,7 +73,14 @@ export async function middleware(req: NextRequest) {
   const auth = await getAuthState(req, res, isAdminRoute);
 
   if (isSignInRoute && auth.user) {
-    return redirectWithCookies(req, res, "/profile");
+    const next = safeInternalPath(req.nextUrl.searchParams.get("next"));
+    const url = req.nextUrl.clone();
+    url.pathname = "/auth/complete";
+    url.search = "";
+    url.searchParams.set("next", next);
+    const redirect = NextResponse.redirect(url);
+    res.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
+    return redirect;
   }
 
   if (pathname.startsWith("/admin/login")) {

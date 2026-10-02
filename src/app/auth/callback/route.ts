@@ -14,7 +14,9 @@ export async function GET(req: Request) {
   const requestUrl = new URL(req.url);
   const code = requestUrl.searchParams.get("code");
   const next = safeInternalPath(requestUrl.searchParams.get("next"));
-  const response = NextResponse.redirect(new URL(next, requestUrl.origin));
+  const completeUrl = new URL("/auth/complete", requestUrl.origin);
+  completeUrl.searchParams.set("next", next);
+  const response = NextResponse.redirect(completeUrl);
   const url = getSupabaseUrl();
   const publishableKey = getSupabaseAnonKey();
 

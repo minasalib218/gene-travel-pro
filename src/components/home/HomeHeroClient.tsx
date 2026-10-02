@@ -579,7 +579,7 @@ export default function HomeHeroClient({
                       {card.id ? (
                         <HomeFavoriteButton item={{ kind: "ready_plan", id: card.id, title: card.title, subtitle: card.eyebrow, image: card.image, href: card.href }} />
                       ) : null}
-                      <div className="absolute left-12 top-3 rounded-full border border-[#ff7a00]/55 bg-[#ff7a00]/25 px-2.5 py-1 text-[8px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_0_18px_rgba(255,122,0,0.28)] backdrop-blur-md md:left-14 md:top-4 md:text-[9px]">
+                      <div className="absolute left-3 right-16 top-3 truncate rounded-full border border-[#ff7a00]/55 bg-[#ff7a00]/25 px-2.5 py-1 text-[8px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_0_18px_rgba(255,122,0,0.28)] backdrop-blur-md md:left-4 md:right-[4.75rem] md:top-4 md:text-[9px]">
                         Original
                       </div>
                       <div className="absolute inset-x-0 bottom-0 p-3 md:p-4">
@@ -1144,7 +1144,7 @@ function HomeFavoriteButton({ item }: { item: HomeFavoriteTarget }) {
       disabled={isPending}
       aria-label={saved ? `Remove ${item.title} from favorites` : `Save ${item.title}`}
       aria-pressed={saved}
-      className="absolute right-3 top-3 z-20 flex h-11 w-11 items-center justify-center rounded-full border border-white/22 bg-black/38 text-white shadow-[0_10px_24px_rgba(0,0,0,0.24)] backdrop-blur-md transition duration-300 hover:scale-105 hover:border-[#ff7a00]/65 hover:text-[#ffb15a] disabled:opacity-60"
+      className="absolute right-3 top-3 z-20 flex h-11 w-11 items-center justify-center border-0 bg-transparent text-white drop-shadow-[0_2px_5px_rgba(0,0,0,0.9)] transition duration-300 hover:scale-105 hover:text-[#ffb15a] disabled:opacity-60 md:right-4 md:top-4"
     >
       <Heart size={15} className={saved ? "fill-[#ff7a00] text-[#ff7a00]" : "text-white"} />
     </button>
@@ -1167,11 +1167,11 @@ function DestinationCard({ card }: { card: DestinationFeatureCard }) {
       <Image src={card.image} alt={card.title} fill sizes="(max-width: 768px) 64vw, (max-width: 1024px) 220px, 25vw" quality={74} className="object-cover transition duration-700 group-hover:scale-[1.05]" />
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(10,12,14,0.02)_5%,rgba(9,10,12,0.88)_100%)]" />
       <HomeFavoriteButton item={{ kind: "destination", id: card.id, title: card.title, subtitle: card.country, image: card.image, href: card.href }} />
-      <div className="absolute left-3 top-3 flex max-w-[62%] flex-wrap gap-1.5 md:left-4 md:top-4 md:gap-2">
+      <div className="absolute left-3 right-16 top-3 flex min-w-0 flex-nowrap gap-1.5 overflow-hidden md:left-4 md:right-[4.75rem] md:top-4 md:gap-2">
         {(card.tripStyles?.length ? card.tripStyles : (["adventure"] as DestinationTripStyleValue[])).slice(0, 2).map((tag) => (
           <span
             key={tag}
-            className={`rounded-full border px-2.5 py-1 text-[8px] font-semibold uppercase tracking-[0.12em] text-white backdrop-blur-md md:px-3 md:text-[9px] ${destinationStyleLabelClasses[tag]}`}
+            className={`min-w-0 truncate rounded-full border px-2.5 py-1 text-[8px] font-semibold uppercase tracking-[0.12em] text-white backdrop-blur-md md:px-3 md:text-[9px] ${destinationStyleLabelClasses[tag]}`}
           >
             {getDestinationTripStyleLabel(tag)}
           </span>
@@ -1211,7 +1211,7 @@ function OfferCard({ card }: { card: OfferFeatureCard }) {
       <Image src={card.image} alt={card.title} fill sizes="(max-width: 768px) 64vw, (max-width: 1024px) 250px, 33vw" quality={74} className="object-cover transition duration-700 group-hover:scale-[1.05]" />
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(8,10,12,0.02)_0%,rgba(7,10,12,0.84)_100%)]" />
       <HomeFavoriteButton item={{ kind: "offer", id: card.id, title: card.title, subtitle: card.location, image: card.image, href: card.href }} />
-      <div className="absolute left-3 top-3 rounded-full bg-[#ff8d1b] px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_8px_24px_rgba(255,122,0,0.28)] md:left-4 md:top-4 md:px-3 md:text-[10px] md:tracking-[0.16em]">
+      <div className="absolute left-3 right-16 top-3 truncate rounded-full bg-[#ff8d1b] px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_8px_24px_rgba(255,122,0,0.28)] md:left-4 md:right-[4.75rem] md:top-4 md:px-3 md:text-[10px] md:tracking-[0.16em]">
         {card.discount}
       </div>
       <div className="absolute inset-x-0 bottom-0 p-[18px] text-white md:p-5">
@@ -1257,7 +1257,7 @@ function EventCard({ card }: { card: EventFeatureCard }) {
       <Image src={card.image} alt={card.title} fill sizes="(max-width: 768px) 64vw, (max-width: 1024px) 210px, 25vw" quality={74} className="object-cover transition duration-700 group-hover:scale-[1.05]" />
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(8,10,12,0.03)_0%,rgba(8,10,12,0.9)_100%)]" />
       <HomeFavoriteButton item={{ kind: "event", id: card.id, title: card.title, subtitle: card.location, image: card.image, href: card.href }} />
-      <div className="absolute left-3 top-3 flex h-5 min-w-[44px] items-center justify-center rounded-full bg-[#ff8d1b] px-2 py-1 text-[8px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_8px_24px_rgba(255,122,0,0.24)] md:left-4 md:top-4 md:h-[22px] md:min-w-[50px] md:text-[10px] md:tracking-[0.16em]">
+      <div className="absolute left-3 right-16 top-3 flex h-5 min-w-0 items-center truncate rounded-full bg-[#ff8d1b] px-2 py-1 text-[8px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_8px_24px_rgba(255,122,0,0.24)] md:left-4 md:right-[4.75rem] md:top-4 md:h-[22px] md:text-[10px] md:tracking-[0.16em]">
         {card.category}
       </div>
       <div className="absolute inset-x-0 bottom-0 p-[18px] text-white md:p-5">

@@ -99,5 +99,19 @@ assert.match(homeClient, /duration: card\.duration/, "Offer cards must display t
 assert.match(homeClient, /discount: card\.discountBadge/, "Offer cards must display their published discount label.");
 assert.match(homeClient, /category: card\.category/, "Event cards must display their published category.");
 assert.match(homeClient, /date: card\.dateRange/, "Event cards must display their published dates.");
+assert.match(homeClient, /right-3 top-3 z-20 flex h-11 w-11/, "Homepage favorite controls must retain a stable mobile touch target.");
+assert.match(homeClient, /border-0 bg-transparent/, "Homepage favorite hearts must not render a visible circular container.");
+assert.match(homeClient, /left-3 right-16 top-3/, "Homepage labels must reserve space for the top-right favorite heart.");
+
+const middleware = read("middleware.ts");
+const authCallback = read("src/app/auth/callback/route.ts");
+const authComplete = read("src/app/auth/complete/page.tsx");
+assert.match(middleware, /url\.pathname = "\/auth\/complete"/, "Authenticated sign-in routes must preserve the requested destination.");
+assert.match(authCallback, /new URL\("\/auth\/complete"/, "OAuth must finish through the shared pending-action completion flow.");
+assert.match(authComplete, /completePendingAction\(next\)/, "Post-auth completion must replay a pending customer action.");
+
+const profileSection = read("src/app/profile/[section]/page.tsx");
+assert.match(profileSection, /supabase\.auth\.getUser\(\)/, "Profile sections must verify the shared Supabase session server-side.");
+assert.doesNotMatch(profileSection, /if \(!data\) redirect\(`\/signin/, "Profile data errors must not be misreported as an expired session.");
 
 console.log("launch-critical guardrails passed");

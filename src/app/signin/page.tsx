@@ -2,15 +2,14 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useLanguage } from "@/components/i18n/LanguageProvider";
 import GeneLogo from "@/components/brand/GeneLogo";
 import { trackAnalyticsEvent } from "@/lib/analytics";
+import { safeInternalPath } from "@/lib/auth/pendingAction";
 
 const ORANGE = "#ff7a00";
-const PENDING_ACTION_KEY = "gene.pendingAction";
-const PENDING_ACTION_MAX_AGE_MS = 30 * 60 * 1000;
 
 function cn(...classes: Array<string | false | undefined | null>) {
   return classes.filter(Boolean).join(" ");
@@ -20,99 +19,12 @@ function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(email.trim());
 }
 
-type PendingAction = {
-  type?: string;
-  readyPlanId?: string;
-  endpoint?: string;
-  method?: string;
-  payload?: unknown;
-  returnTo?: string;
-  createdAt?: number;
-};
-
-function isSafeInternalPath(path: unknown): path is string {
-  return typeof path === "string" && path.startsWith("/") && !path.startsWith("//") && !path.includes("\\");
-}
-
-function readPendingAction(): PendingAction | null {
-  try {
-    const raw = localStorage.getItem(PENDING_ACTION_KEY);
-    if (!raw) return null;
-
-    const action = JSON.parse(raw) as PendingAction;
-    const createdAt = Number(action.createdAt ?? 0);
-    if (!createdAt || Date.now() - createdAt > PENDING_ACTION_MAX_AGE_MS) {
-      localStorage.removeItem(PENDING_ACTION_KEY);
-      return null;
-    }
-
-    return action;
-  } catch {
-    localStorage.removeItem(PENDING_ACTION_KEY);
-    return null;
-  }
-}
-
-async function completePendingAction(defaultReturnPath: string) {
-  const action = readPendingAction();
-  if (!action) return defaultReturnPath;
-
-  const returnTo = isSafeInternalPath(action.returnTo) ? action.returnTo : defaultReturnPath;
-  if (action.type !== "favorite_ready_plan" || !action.readyPlanId) {
-    if (
-      action.type === "home_favorite" &&
-      (action.endpoint === "/api/profile/wishlist" || action.endpoint === "/api/profile/destinations")
-    ) {
-      try {
-        const response = await fetch(action.endpoint, {
-          method: action.method === "DELETE" ? "DELETE" : "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(action.payload ?? {}),
-        });
-
-        if (response.ok || response.status === 400 || response.status === 404 || response.status === 503) {
-          localStorage.removeItem(PENDING_ACTION_KEY);
-        }
-      } catch {
-        return returnTo;
-      }
-    } else {
-      localStorage.removeItem(PENDING_ACTION_KEY);
-    }
-
-    return returnTo;
-  }
-
-  try {
-    const response = await fetch("/api/profile/favorites", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ readyPlanId: action.readyPlanId }),
-    });
-
-    if (response.ok || response.status === 400 || response.status === 404 || response.status === 503) {
-      localStorage.removeItem(PENDING_ACTION_KEY);
-    }
-  } catch {
-    return returnTo;
-  }
-
-  return returnTo;
-}
-
-async function completePendingActionWithTimeout(defaultReturnPath: string) {
-  return Promise.race([
-    completePendingAction(defaultReturnPath),
-    new Promise<string>((resolve) => window.setTimeout(() => resolve(defaultReturnPath), 650)),
-  ]);
-}
-
 function SignInInner() {
   const { t } = useLanguage();
+  const router = useRouter();
   const search = useSearchParams();
   const next = useMemo(() => {
-    const requested = search.get("next") || "/profile";
-    return requested.startsWith("/") && !requested.startsWith("//") ? requested : "/profile";
+    return safeInternalPath(search.get("next"));
   }, [search]);
 
   const [email, setEmail] = useState("");
@@ -128,6 +40,10 @@ function SignInInner() {
     if (authError === "profile_unavailable") setErr("Your account is verified, but your profile could not be loaded. Please try again.");
     if (authError === "auth_callback_failed") setErr("Google verification could not be completed. Please try again.");
   }, [search]);
+
+  useEffect(() => {
+    router.prefetch(next);
+  }, [next, router]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -162,8 +78,7 @@ function SignInInner() {
         source: "signin_page",
         next,
       });
-      const destination = await completePendingActionWithTimeout(next);
-      window.location.replace(destination);
+      window.location.replace(`/auth/complete?next=${encodeURIComponent(next)}`);
     } finally {
       setLoading(false);
     }
@@ -275,6 +190,7 @@ function SignInInner() {
                   name="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
                   className="w-full bg-transparent px-4 py-3 text-sm text-white/90 outline-none"
                   autoComplete="email"
                   autoCapitalize="none"
@@ -296,6 +212,7 @@ function SignInInner() {
                   name="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Your password"
                   className="w-full bg-transparent px-4 py-3 text-sm text-white/90 outline-none"
                   autoComplete="current-password"
                   data-form-type="other"
