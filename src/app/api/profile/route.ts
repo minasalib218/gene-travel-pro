@@ -215,15 +215,25 @@ async function getProfileActivity(userId: string) {
     orderBy: { createdAt: "desc" },
     take: 12,
   });
+  const preferenceMetadata = travelPreference?.metadata && typeof travelPreference.metadata === "object" && !Array.isArray(travelPreference.metadata)
+    ? travelPreference.metadata as Record<string, unknown>
+    : {};
+  const hiddenOfferIds = Array.isArray(preferenceMetadata.hiddenOfferIds)
+    ? preferenceMetadata.hiddenOfferIds.filter((id): id is string => typeof id === "string")
+    : [];
+  const pinnedOfferIds = Array.isArray(preferenceMetadata.pinnedOfferIds)
+    ? preferenceMetadata.pinnedOfferIds.filter((id): id is string => typeof id === "string")
+    : [];
+  const pinnedOfferSet = new Set(pinnedOfferIds);
   const personalizedOffers = hasOffers
     ? await prisma.offer
         .findMany({
           where: {
             status: "published",
             OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+            ...(hiddenOfferIds.length ? { id: { notIn: hiddenOfferIds } } : {}),
           },
           orderBy: [{ featured: "desc" }, { updatedAt: "desc" }],
-          take: 12,
           select: {
             id: true,
             title: true,
@@ -240,10 +250,13 @@ async function getProfileActivity(userId: string) {
           },
         })
         .then((offers) =>
-          offers.map((offer) => ({
-            ...offer,
-            bookingHref: `/api/affiliate/redirect?type=offer&id=${offer.id}`,
-          })),
+          offers
+            .sort((left, right) => Number(pinnedOfferSet.has(right.id)) - Number(pinnedOfferSet.has(left.id)))
+            .slice(0, 12)
+            .map((offer) => ({
+              ...offer,
+              bookingHref: `/api/affiliate/redirect?type=offer&id=${offer.id}`,
+            })),
         )
     : [];
   const interestTerms = [
@@ -448,6 +461,15 @@ export async function GET() {
     );
   }
 
+  const profileWithAuth = {
+    ...profile,
+    emailVerified: Boolean(user.email_confirmed_at),
+    authProvider:
+      typeof user.app_metadata?.provider === "string"
+        ? user.app_metadata.provider
+        : user.identities?.[0]?.provider || "email",
+  };
+
   if (String(profile.role ?? "").toUpperCase() === "ADMIN") {
     const confirmedTrips = await getCustomerTrips(user.id);
     const savedReadyPlans = await getSavedReadyPlans(user.id);
@@ -457,7 +479,7 @@ export async function GET() {
 
     return NextResponse.json({
       ok: true,
-      profile,
+      profile: profileWithAuth,
       usage: {
         tier: "agency" as const,
         status: "ACTIVE" as const,
@@ -587,7 +609,7 @@ export async function GET() {
 
   return NextResponse.json({
     ok: true,
-    profile,
+    profile: profileWithAuth,
     usage,
     paidTiers,
     confirmedTrips,

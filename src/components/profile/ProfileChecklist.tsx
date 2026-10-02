@@ -4,26 +4,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { Backpack, BatteryCharging, Building2, Check, ChevronDown, CircleEllipsis, FileCheck2, HeartPulse, ListPlus, MapPin, Mountain, Palmtree, Plus, Search, Shirt, Snowflake, Sparkles, Trash2, Umbrella, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
+import { starterChecklistItems, type ChecklistItem } from "@/lib/profile/checklist";
 
-type ChecklistItem = { id: string; label: string; group: string; done: boolean; custom?: boolean };
 type PresetKey = "general" | "beach" | "city" | "winter" | "adventure" | "custom";
 type Suggestion = { label: string; reason: string; group: string; icon: any };
 
 const groups = ["Travel Documents", "Clothing", "Toiletries & Health", "Electronics", "Travel Essentials"];
-const starterItems: ChecklistItem[] = [
-  { id: "passport", label: "Passport", group: "Travel Documents", done: false },
-  { id: "visa-documents", label: "Visa / Travel Documents", group: "Travel Documents", done: false },
-  { id: "travel-insurance", label: "Travel Insurance", group: "Travel Documents", done: false },
-  { id: "t-shirts", label: "T-shirts", group: "Clothing", done: false },
-  { id: "jacket", label: "Jacket", group: "Clothing", done: false },
-  { id: "swimwear", label: "Swimwear", group: "Clothing", done: false },
-  { id: "toothbrush", label: "Toothbrush", group: "Toiletries & Health", done: false },
-  { id: "sunscreen", label: "Sunscreen", group: "Toiletries & Health", done: false },
-  { id: "medicine", label: "Personal Medicine", group: "Toiletries & Health", done: false },
-  { id: "charger", label: "Phone Charger", group: "Electronics", done: false },
-  { id: "power-bank", label: "Power Bank", group: "Electronics", done: false },
-  { id: "adapter", label: "Travel Adapter", group: "Electronics", done: false },
-];
 const presets: Array<{ key: PresetKey; label: string; icon: any }> = [
   { key: "general", label: "General Trip", icon: Backpack }, { key: "beach", label: "Beach", icon: Palmtree },
   { key: "city", label: "City Break", icon: Building2 }, { key: "winter", label: "Winter", icon: Snowflake },
@@ -77,7 +63,7 @@ function groupIcon(name: string) {
 }
 
 export default function ProfileChecklist({ preference, trips = [] }: { preference?: any; trips?: any[] }) {
-  const savedItems: ChecklistItem[] = (Array.isArray(preference?.metadata?.checklist) ? preference.metadata.checklist : starterItems)
+  const savedItems: ChecklistItem[] = (Array.isArray(preference?.metadata?.checklist) ? preference.metadata.checklist : starterChecklistItems)
     .map((item: ChecklistItem) => ({ ...item, group: normalizeGroup(item.group) }));
   const initialPreset = presets.some((p) => p.key === preference?.metadata?.checklistPreset) ? preference.metadata.checklistPreset as PresetKey : "general";
   const [items, setItems] = useState<ChecklistItem[]>(savedItems);

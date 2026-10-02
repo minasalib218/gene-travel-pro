@@ -113,4 +113,17 @@ const profilePage = read("src/app/profile/page.tsx");
 assert.match(profilePage, /getCustomerProfileResponse/, "The profile page must use the shared server data loader.");
 assert.doesNotMatch(profilePage, /fetch\(url,/, "The profile page must not make an HTTP request back to its own API.");
 
+const adminProfileContent = read("src/app/api/admin/users/[id]/profile-content/route.ts");
+assert.match(adminProfileContent, /requireAdmin\(\)/, "Per-customer profile content updates must require an admin.");
+assert.match(adminProfileContent, /travelPreference\.upsert/, "Per-customer profile content must reuse the existing preference record.");
+assert.match(adminProfileContent, /adminAuditLog\.create/, "Admin profile content changes must be audited.");
+assert.doesNotMatch(adminProfileContent, /deleteMany|delete\(/, "Profile content updates must not delete customer or published content.");
+
+const profileApi = read("src/app/api/profile/route.ts");
+assert.match(profileApi, /hiddenOfferIds/, "Customer offers must honor admin visibility controls.");
+assert.match(profileApi, /pinnedOfferIds/, "Customer offers must honor admin pinning controls.");
+
+const adminUserPage = read("src/app/(admin)/admin/users/[id]/page.tsx");
+assert.match(adminUserPage, /AdminCustomerProfileContent/, "The user detail page must expose per-customer profile content controls.");
+
 console.log("Security guardrail checks passed.");

@@ -5,6 +5,9 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AdminCard } from "@/components/admin/AdminCard";
 import { requireAdmin } from "@/lib/admin/requireAdmin";
 import { withExistingTable } from "@/lib/prisma-safe";
+import AdminCustomerProfileContent from "@/components/admin/AdminCustomerProfileContent";
+import { starterChecklistItems, type ChecklistItem } from "@/lib/profile/checklist";
+import { getCalendarDiscoveryData } from "@/lib/profile/getCalendarDiscoveryData";
 
 export default async function AdminUserDetailPage({ params }: { params: { id: string } }) {
   const admin = await requireAdmin();
@@ -83,6 +86,34 @@ export default async function AdminUserDetailPage({ params }: { params: { id: st
       [],
     ),
   ]);
+
+  const [publishedOffers, calendarData] = await Promise.all([
+    withExistingTable(
+      "offers",
+      () => prisma.offer.findMany({
+        where: {
+          status: "published",
+          OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+        },
+        orderBy: [{ featured: "desc" }, { updatedAt: "desc" }],
+        select: { id: true, title: true, location: true },
+      }),
+      [],
+    ),
+    getCalendarDiscoveryData(),
+  ]);
+
+  const preferenceMetadata = preferences?.metadata && typeof preferences.metadata === "object" && !Array.isArray(preferences.metadata)
+    ? preferences.metadata as Record<string, unknown>
+    : {};
+  const stringArray = (value: unknown) => Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+  const savedChecklist = Array.isArray(preferenceMetadata.checklist)
+    ? preferenceMetadata.checklist.filter((item): item is ChecklistItem => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+        const entry = item as Record<string, unknown>;
+        return typeof entry.id === "string" && typeof entry.label === "string" && typeof entry.group === "string" && typeof entry.done === "boolean";
+      })
+    : starterChecklistItems;
 
   const activePass = profile.passes.find((pass) => pass.status === "ACTIVE") ?? profile.passes[0] ?? null;
   const totalMainCredits = activePass ? activePass.mainCreditsTotal || activePass.tierActionsTotal : 0;
@@ -184,6 +215,18 @@ export default async function AdminUserDetailPage({ params }: { params: { id: st
             </div>
           ))}
         </div>
+      </AdminCard>
+
+      <AdminCard>
+        <AdminCustomerProfileContent
+          userId={profile.id}
+          initialChecklist={savedChecklist}
+          offers={publishedOffers}
+          calendarItems={calendarData.items}
+          initialHiddenOfferIds={stringArray(preferenceMetadata.hiddenOfferIds)}
+          initialPinnedOfferIds={stringArray(preferenceMetadata.pinnedOfferIds)}
+          initialCalendarDismissed={stringArray(preferenceMetadata.calendarDismissed)}
+        />
       </AdminCard>
 
       <div className="grid gap-6 xl:grid-cols-4">
