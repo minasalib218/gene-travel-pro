@@ -20,7 +20,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, code: "NOT_AUTHED" }, { status: 401 });
     }
 
-    const userId = data.user.id;
+    const user = data.user;
 
     // ✅ Find token record
     const record = await prisma.activationToken.findUnique({
@@ -35,34 +35,36 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, code: "TOKEN_USED" }, { status: 409 });
     }
 
-    // ✅ Ensure profile exists
-    await prisma.profile.upsert({
-      where: { id: userId },
-      update: {},
-      create: { id: userId },
+    // Claim and pass creation must commit together. The conditional update
+    // allows only one concurrent request to claim this token.
+    const pass = await prisma.$transaction(async (tx) => {
+      const claimed = await tx.activationToken.updateMany({
+        where: { id: record.id, usedAt: null, used: false },
+        data: { usedAt: new Date(), used: true },
+      });
+      if (claimed.count !== 1) return null;
+
+      await tx.profile.upsert({
+        where: { id: user.id },
+        update: {},
+        create: { id: user.id },
+      });
+
+      return tx.pass.create({
+        data: {
+          userId: user.id,
+          tier: record.passTier,
+          status: PassStatus.ACTIVE,
+          tierActionsTotal: 3,
+          tierActionsUsed: 0,
+          startsAt: new Date(),
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        },
+      });
     });
 
-    // ✅ Create pass with ONLY fields that exist in your schema
-    const pass = await prisma.pass.create({
-      data: {
-        userId,
-        tier: record.passTier,          // must exist on ActivationToken
-        status: PassStatus.ACTIVE,      // enum
-        tierActionsTotal: 3,
- // if you DON'T have actionsTotal, see note below
-        tierActionsUsed: 0,
-        startsAt: new Date(),
-        expiresAt: null, // if you DON'T have expiresAt, see note below
-      },
-    });
-
-    // ✅ Mark token used (ONLY usedAt)
-    await prisma.activationToken.update({
-      where: { id: record.id },
-      data: { usedAt: new Date() },
-    });
-
-    return NextResponse.json({ ok: true, claimed: true, passId: pass.id, pass }, { status: 200 });
+    if (!pass) return NextResponse.json({ ok: false, code: "TOKEN_USED" }, { status: 409 });
+    return NextResponse.json({ ok: true, pass });
   } catch (e: any) {
     console.error("passes/claim error:", e);
     return NextResponse.json(

@@ -45,36 +45,35 @@ export async function POST(req: Request) {
       );
     }
 
-    // Ensure profile exists
-    await prisma.profile.upsert({
-      where: { id: user.id },
-      update: {},
-      create: { id: user.id },
+    // Claim and pass creation must commit together. The conditional update
+    // allows only one concurrent request to claim this token.
+    const pass = await prisma.$transaction(async (tx) => {
+      const claimed = await tx.activationToken.updateMany({
+        where: { id: record.id, usedAt: null, used: false },
+        data: { usedAt: new Date(), used: true },
+      });
+      if (claimed.count !== 1) return null;
+
+      await tx.profile.upsert({
+        where: { id: user.id },
+        update: {},
+        create: { id: user.id },
+      });
+
+      return tx.pass.create({
+        data: {
+          userId: user.id,
+          tier: record.passTier,
+          status: PassStatus.ACTIVE,
+          tierActionsTotal: 3,
+          tierActionsUsed: 0,
+          startsAt: new Date(),
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        },
+      });
     });
 
-    // Create Pass
-    const pass = await prisma.pass.create({
-      data: {
-        userId: user.id,
-        tier: record.passTier,
-        status: PassStatus.ACTIVE,
-        tierActionsTotal: 3,
-        tierActionsUsed: 0,
-        startsAt: new Date(),
-        expiresAt: new Date(
-          Date.now() + 24 * 60 * 60 * 1000
-        ),
-      },
-    });
-
-    // Mark token as used (ONLY usedAt)
-    await prisma.activationToken.update({
-      where: { id: record.id },
-      data: {
-        usedAt: new Date(),
-      },
-    });
-
+    if (!pass) return NextResponse.json({ ok: false, code: "TOKEN_USED" }, { status: 409 });
     return NextResponse.json({ ok: true, pass });
   } catch (error) {
     console.error("Consume activation error:", error);
