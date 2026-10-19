@@ -44,6 +44,19 @@ function toDaysJson(value: unknown) {
   return Array.isArray(value) ? value : [];
 }
 
+function asObject(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function firstNonEmptyString(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
 function toLinks(value: unknown) {
   if (!Array.isArray(value)) return [];
 
@@ -127,9 +140,25 @@ function toDayRecords(content: ReadyPlanContent) {
 }
 
 function buildPlanData(body: any) {
-  const title = String(body?.title ?? "").trim();
-  const destination = String(body?.destination ?? "").trim();
-  const slug = slugify(String(body?.slug ?? title));
+  const suppliedContent = asObject(body?.contentJson);
+  const suppliedHero = asObject(suppliedContent.hero);
+  const suppliedOverview = asObject(suppliedContent.journeyOverview);
+  const suppliedDays = Array.isArray(suppliedContent.days) ? suppliedContent.days.map(asObject) : [];
+  const firstDestinationDay = suppliedDays.find((day) =>
+    firstNonEmptyString(day.destinationLabel, day.routeTo, day.countryLabel),
+  );
+  const title = firstNonEmptyString(body?.title, suppliedHero.title, body?.seoTitle, "Untitled Ready Plan");
+  const destination = firstNonEmptyString(
+    body?.destination,
+    suppliedOverview.destinations,
+    firstDestinationDay?.destinationLabel,
+    firstDestinationDay?.routeTo,
+    body?.city,
+    body?.country,
+    firstDestinationDay?.countryLabel,
+    "Multi-destination journey",
+  );
+  const slug = slugify(firstNonEmptyString(body?.slug, title, `ready-plan-${Date.now()}`));
   const status = toStatus(body?.status);
   const daysCount = Math.max(0, Number(body?.daysCount ?? body?.days ?? 0) || 0);
   const basePlan = {
@@ -257,7 +286,13 @@ export async function POST(req: Request) {
   const data = buildPlanData(body);
 
   if (!data.title || !data.destination || !data.slug) {
-    return NextResponse.json({ ok: false, code: "INVALID_INPUT" }, { status: 400 });
+    const errors = [
+      !data.title ? "title is required" : null,
+      !data.destination ? "destination is required" : null,
+      !data.slug ? "slug is required" : null,
+    ].filter((error): error is string => Boolean(error));
+    console.warn("[READY_PLAN_CREATE_REJECTED_INVALID]", { errors });
+    return NextResponse.json({ ok: false, code: "INVALID_INPUT", errors }, { status: 400 });
   }
 
   if (data.status === ReadyPlanStatus.PUBLISHED) {

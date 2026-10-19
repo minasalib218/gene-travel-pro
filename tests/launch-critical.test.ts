@@ -67,6 +67,7 @@ assert.doesNotMatch(
 );
 
 const readyPlanStudio = read("src/components/admin/ReadyPlanStudio.tsx");
+const readyPlanCreateRoute = read("src/app/api/admin/ready-plans/route.ts");
 assert.match(
   readyPlanStudio,
   /existingPlanId \? `\/api\/admin\/ready-plans\/\$\{existingPlanId\}` : "\/api\/admin\/ready-plans"/,
@@ -81,6 +82,21 @@ assert.match(
   readyPlanStudio,
   /status: "PUBLISHED"[\s\S]{0,120}showOnHome: true/,
   "The final publish request must be a status-only update that keeps plan content intact.",
+);
+assert.match(
+  readyPlanCreateRoute,
+  /suppliedOverview\.destinations/,
+  "Ready Plan creation must recover the destination from the saved Journey Overview content.",
+);
+assert.match(
+  readyPlanCreateRoute,
+  /firstDestinationDay\?\.destinationLabel/,
+  "Ready Plan creation must recover destination data from existing day content.",
+);
+assert.match(
+  readyPlanCreateRoute,
+  /suppliedHero\.title/,
+  "Ready Plan creation must recover the visible plan title from its content payload.",
 );
 
 const profileTrips = read("src/app/api/profile/trips/route.ts");
