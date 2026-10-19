@@ -98,6 +98,16 @@ assert.match(
   /suppliedHero\.title/,
   "Ready Plan creation must recover the visible plan title from its content payload.",
 );
+assert.match(
+  schema,
+  /model ReadyPlan[\s\S]*destination String[\s\S]*location\s+String/,
+  "Prisma must model the required legacy Ready Plan location column.",
+);
+assert.match(
+  readyPlanCreateRoute,
+  /location: destination/,
+  "Ready Plan creation must populate the required legacy location column without changing destination.",
+);
 
 const profileTrips = read("src/app/api/profile/trips/route.ts");
 assert.match(profileTrips, /creationKey = `ready-plan:\$\{userId\}:\$\{readyPlan\.id\}`/);

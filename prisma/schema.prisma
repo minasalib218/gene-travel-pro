@@ -581,6 +581,7 @@ model ReadyPlan {
   country     String?
   city        String?
   destination String
+  location    String
   style       String?
   daysCount   Int     @default(0)
 

@@ -128,7 +128,10 @@ function buildUpdateData(body: any) {
   if (body?.subtitle !== undefined) data.subtitle = toOptionalString(body.subtitle);
   if (body?.country !== undefined) data.country = toOptionalString(body.country);
   if (body?.city !== undefined) data.city = toOptionalString(body.city);
-  if (body?.destination !== undefined) data.destination = String(body.destination).trim();
+  if (body?.destination !== undefined) {
+    data.destination = String(body.destination).trim();
+    data.location = data.destination;
+  }
   if (body?.style !== undefined) data.style = toOptionalString(body.style);
   if (body?.daysCount !== undefined || body?.days !== undefined) {
     data.daysCount = Math.max(0, Number(body.daysCount ?? body.days) || 0);
@@ -436,6 +439,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     ...(data.country !== undefined ? { country: data.country as string | null } : {}),
     ...(data.city !== undefined ? { city: data.city as string | null } : {}),
     ...(data.destination !== undefined ? { destination: data.destination as string } : {}),
+    ...(data.location !== undefined ? { location: data.location as string } : {}),
     ...(data.style !== undefined ? { style: data.style as string | null } : {}),
     ...(data.daysCount !== undefined ? { daysCount: data.daysCount as number } : {}),
     ...(data.priceFrom !== undefined ? { priceFrom: data.priceFrom as number | null } : {}),
@@ -482,6 +486,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     ...(data.title !== undefined ? { title: data.title as string } : {}),
     ...(data.subtitle !== undefined ? { subtitle: data.subtitle as string | null } : {}),
     ...(data.destination !== undefined ? { destination: data.destination as string } : {}),
+    ...(data.location !== undefined ? { location: data.location as string } : {}),
     ...(data.daysCount !== undefined ? { daysCount: data.daysCount as number } : {}),
     ...(data.priceFrom !== undefined ? { priceFrom: data.priceFrom as number | null } : {}),
     ...(data.currency !== undefined ? { currency: data.currency as string } : {}),
