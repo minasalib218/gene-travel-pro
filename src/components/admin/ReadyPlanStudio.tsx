@@ -605,11 +605,18 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
 
     try {
       const publicHtml = previewRef.current ? generatePublicPlanHtml(previewRef.current) : content.publicHtml;
-      const savedTitle = content.hero.title.trim() || plan.title;
+      const savedTitle = content.hero.title.trim() || plan.title.trim();
+      const savedDestination =
+        plan.destination.trim() ||
+        content.journeyOverview.destinations.trim() ||
+        content.days.find((day) => day.destinationLabel.trim())?.destinationLabel.trim() ||
+        content.days.find((day) => day.routeTo?.trim())?.routeTo?.trim() ||
+        "";
       const nextStatus = statusOverride ?? plan.status;
       const payload = {
         ...plan,
         title: savedTitle,
+        destination: savedDestination,
         status: nextStatus,
         showOnHome: nextStatus === "PUBLISHED",
         expectedUpdatedAt: plan.updatedAt,
@@ -621,10 +628,11 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
         },
       };
 
+      const existingPlanId = plan.id?.trim();
       const response = await fetch(
-        mode === "create" ? "/api/admin/ready-plans" : `/api/admin/ready-plans/${plan.id}`,
+        existingPlanId ? `/api/admin/ready-plans/${existingPlanId}` : "/api/admin/ready-plans",
         {
-          method: mode === "create" ? "POST" : "PUT",
+          method: existingPlanId ? "PUT" : "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         },
@@ -655,7 +663,7 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
       );
       setMessage(mode === "create" ? "Ready Plan created." : "Ready Plan saved.");
 
-      if (mode === "create" && (data.plan?.id || data.id)) {
+      if (!existingPlanId && (data.plan?.id || data.id)) {
         router.replace(`/admin/ready-plans/${data.plan?.id || data.id}/edit`);
       }
 
@@ -666,8 +674,44 @@ export default function ReadyPlanStudio({ mode, planId }: StudioProps) {
   }
 
   async function saveAsStatus(status: "DRAFT" | "PUBLISHED") {
-    patchPlan({ status });
-    await save(status);
+    if (status === "DRAFT") {
+      patchPlan({ status });
+      await save(status);
+      return;
+    }
+
+    // Persist the complete editor content first, then publish with a status-only
+    // update. This keeps existing media and affiliate links intact and prevents
+    // an already-created plan from being submitted through the create endpoint.
+    const savedPlan = await save("DRAFT");
+    if (!savedPlan?.id) return;
+
+    setSaving(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/admin/ready-plans/${savedPlan.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "PUBLISHED",
+          showOnHome: true,
+          expectedUpdatedAt: savedPlan.updatedAt,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.ok) {
+        const details = Array.isArray(data?.errors) ? `: ${data.errors.join(", ")}` : "";
+        setMessage(`${data?.code || "Could not publish ready plan."}${details}`);
+        return;
+      }
+
+      setPlan(data.plan);
+      setMessage("Ready Plan published successfully.");
+      router.replace(`/admin/ready-plans/${data.plan.id}/edit`);
+      router.refresh();
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function previewCustomerView() {

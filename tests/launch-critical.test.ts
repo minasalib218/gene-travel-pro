@@ -66,6 +66,23 @@ assert.doesNotMatch(
   "Launch work must not clear existing affiliate URLs.",
 );
 
+const readyPlanStudio = read("src/components/admin/ReadyPlanStudio.tsx");
+assert.match(
+  readyPlanStudio,
+  /existingPlanId \? `\/api\/admin\/ready-plans\/\$\{existingPlanId\}` : "\/api\/admin\/ready-plans"/,
+  "An already-created Ready Plan must use its update endpoint even before client navigation settles.",
+);
+assert.match(
+  readyPlanStudio,
+  /const savedPlan = await save\("DRAFT"\)/,
+  "Publishing must first persist the existing complete Ready Plan without rebuilding it.",
+);
+assert.match(
+  readyPlanStudio,
+  /status: "PUBLISHED"[\s\S]{0,120}showOnHome: true/,
+  "The final publish request must be a status-only update that keeps plan content intact.",
+);
+
 const profileTrips = read("src/app/api/profile/trips/route.ts");
 assert.match(profileTrips, /creationKey = `ready-plan:\$\{userId\}:\$\{readyPlan\.id\}`/);
 assert.match(profileTrips, /insert into public\.customer_plans/);
