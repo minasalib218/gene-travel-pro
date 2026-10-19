@@ -584,6 +584,7 @@ model ReadyPlan {
   location    String
   style       String?
   daysCount   Int     @default(0)
+  legacyDays  Int     @map("days")
 
   heroImage  String?
   coverImage String?

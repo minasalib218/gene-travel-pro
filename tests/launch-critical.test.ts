@@ -104,9 +104,19 @@ assert.match(
   "Prisma must model the required legacy Ready Plan location column.",
 );
 assert.match(
+  schema,
+  /model ReadyPlan[\s\S]*daysCount\s+Int[\s\S]*legacyDays\s+Int\s+@map\("days"\)/,
+  "Prisma must model the required legacy Ready Plan days column.",
+);
+assert.match(
   readyPlanCreateRoute,
   /location: destination/,
   "Ready Plan creation must populate the required legacy location column without changing destination.",
+);
+assert.match(
+  readyPlanCreateRoute,
+  /legacyDays: data\.daysCount/,
+  "Ready Plan creation must keep the required legacy days column synchronized with daysCount.",
 );
 
 const profileTrips = read("src/app/api/profile/trips/route.ts");
