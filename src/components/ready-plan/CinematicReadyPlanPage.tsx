@@ -373,7 +373,7 @@ export default function CinematicReadyPlanPage({
       </section>
 
       <section className={`relative z-10 mx-auto -mt-12 ${PAGE_MAX_WIDTH} ${PAGE_PADDING} pb-16`}>
-        <div className="grid gap-6 xl:grid-cols-[240px_960px_320px] xl:justify-center xl:items-start">
+        <div className="grid gap-6 xl:grid-cols-[220px_minmax(0,1fr)_300px] xl:items-start 2xl:grid-cols-[240px_minmax(0,1fr)_320px]">
           <aside className="rounded-[16px] border border-white/10 bg-[linear-gradient(180deg,rgba(34,27,23,0.96),rgba(16,14,14,0.95))] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.32)] backdrop-blur-2xl">
             <div className="mb-5 text-base font-semibold text-white">Your Journey</div>
             <div className="relative pl-8">
@@ -875,16 +875,11 @@ function MobileReadyPlanView({
           <h2 className="text-[18px] font-bold text-[#7b4215]">AI Suggestions <span className="text-[#ff7a00]">+</span></h2>
           {primarySuggestion ? (
             <div className="mt-4">
-              <Img src={primarySuggestion.imageUrl} alt={primarySuggestion.title} className="h-[120px] w-full rounded-[12px] object-cover" />
-              <h3 className="mt-3 text-[16px] font-bold">{primarySuggestion.title}</h3>
-              <p className="mt-2 text-[14px] leading-6 text-black/68">{primarySuggestion.matchReason}</p>
-              <button
-                type="button"
-                onClick={() => setOverlay("added")}
-                className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-[12px] bg-[#ff7a00] text-[14px] font-bold text-white"
-              >
-                Add to Plan
-              </button>
+              <SuggestionCard
+                suggestion={primarySuggestion}
+                actionLabel="Add to Plan"
+                onAction={() => setOverlay("added")}
+              />
             </div>
           ) : (
             <p className="mt-3 text-[14px] text-black/60">No suggestions for this day yet.</p>
@@ -1191,34 +1186,56 @@ function SummaryMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function SuggestionCard({ suggestion }: { suggestion: ReadyPlanSuggestion }) {
+function SuggestionCard({
+  suggestion,
+  actionLabel = BOOK_NOW_LABEL,
+  onAction,
+}: {
+  suggestion: ReadyPlanSuggestion;
+  actionLabel?: string;
+  onAction?: () => void;
+}) {
   return (
     <motion.div
       whileHover={{ y: -4 }}
       transition={{ duration: 0.28, ease }}
-      className="overflow-hidden rounded-[16px] border border-black/8 bg-white/72 shadow-[0_12px_38px_rgba(0,0,0,0.08)]"
+      className="group relative isolate min-h-[290px] overflow-hidden rounded-[16px] border border-white/20 bg-[#17110d] text-white shadow-[0_16px_44px_rgba(0,0,0,0.2)] sm:min-h-[320px] lg:min-h-[350px]"
     >
-      <div className="relative h-40">
-        <Img src={suggestion.imageUrl} alt={suggestion.title} className="h-full w-full object-cover" />
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.02),rgba(0,0,0,0.62))]" />
-        <div className="absolute inset-x-0 bottom-0 p-4 text-white">
-          <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-[#ffd6b0]">
-            <span className="rounded-full bg-[#ff7a00] px-2.5 py-1 text-white">{suggestion.category || "Activity"}</span>
-            <span>{suggestion.matchScore || "Highly Recommended"}</span>
-          </div>
-          <div className="mt-3 text-[16px] font-semibold leading-5">{suggestion.title}</div>
-        </div>
+      <Img
+        src={suggestion.imageUrl}
+        alt={suggestion.title}
+        className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-[1.025]"
+      />
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(7,6,5,0.58)_0%,rgba(7,6,5,0.08)_27%,rgba(7,6,5,0.03)_48%,rgba(7,6,5,0.32)_66%,rgba(7,6,5,0.96)_100%)]" />
+      <div className="absolute inset-x-0 top-0 flex flex-wrap items-center gap-2 p-4">
+        <span className="max-w-full truncate rounded-full border border-white/18 bg-[#ff7a00] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-white shadow-[0_6px_20px_rgba(255,122,0,0.3)] sm:text-[11px]">
+          {suggestion.category || "Activity"}
+        </span>
+        <span className="max-w-full truncate rounded-full border border-white/16 bg-black/42 px-2.5 py-1 text-[10px] font-semibold text-white/92 backdrop-blur-md sm:text-[11px]">
+          {suggestion.matchScore || "Highly Recommended"}
+        </span>
       </div>
-      <div className="p-4 text-[#2d1f18]">
-        <p className="text-[13px] leading-6 text-[#5a4638]">{suggestion.matchReason}</p>
-        <div className="mt-4 flex items-end justify-between gap-3">
-          <div>
-            {suggestion.price ? <div className="text-[16px] font-bold leading-none">{suggestion.price}</div> : null}
-            {suggestion.duration ? <div className="mt-2 text-[12px] text-[#705749]">{suggestion.duration}</div> : null}
+      <div className="absolute inset-x-0 bottom-0 p-4 sm:p-5">
+        <h3 className="line-clamp-2 max-w-[34rem] text-[17px] font-bold leading-[1.2] text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.72)] sm:text-[19px] lg:text-[18px]">
+          {suggestion.title}
+        </h3>
+        {suggestion.matchReason ? (
+          <p className="mt-2 line-clamp-2 max-w-[38rem] text-[12px] leading-[1.45] text-white/82 drop-shadow-[0_2px_7px_rgba(0,0,0,0.76)] sm:text-[13px]">
+            {suggestion.matchReason}
+          </p>
+        ) : null}
+        <div className="mt-4 flex items-end justify-between gap-3 border-t border-white/14 pt-3">
+          <div className="min-w-0">
+            {suggestion.price ? <div className="truncate text-[16px] font-bold leading-none text-white">{suggestion.price}</div> : null}
+            {suggestion.duration ? <div className="mt-1.5 truncate text-[11px] text-white/70 sm:text-[12px]">{suggestion.duration}</div> : null}
           </div>
-          <button className="inline-flex h-12 items-center gap-2 rounded-[12px] bg-[linear-gradient(135deg,#ff7a00,#ffab3d)] px-4 py-3 text-[14px] font-semibold text-white shadow-[0_0_26px_rgba(255,122,0,0.26)]">
+          <button
+            type="button"
+            onClick={onAction}
+            className="inline-flex h-11 shrink-0 items-center gap-2 rounded-[10px] bg-[linear-gradient(135deg,#ff7a00,#ffab3d)] px-3.5 text-[12px] font-bold text-white shadow-[0_0_26px_rgba(255,122,0,0.3)] transition active:scale-[0.98] sm:px-4 sm:text-[13px]"
+          >
             <Sparkles size={15} />
-            {BOOK_NOW_LABEL}
+            {actionLabel}
           </button>
         </div>
       </div>

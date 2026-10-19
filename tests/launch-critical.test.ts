@@ -139,6 +139,8 @@ const publicReadyPlanUi = read("src/components/ready-plan/CinematicReadyPlanPage
 assert.match(publicReadyPlanUi, /api\/affiliate\/redirect\?itemId=/, "Item-level Book Now links must keep using the affiliate redirect.");
 assert.match(publicReadyPlanUi, /READY_PLAN_IMAGE_FALLBACK/, "Broken Ready Plan images must have a stable visual fallback.");
 assert.match(publicReadyPlanUi, /READY_PLAN_FOOTER_IMAGE = "\/bg\/home-hero-bottom-optimized\.jpg"/, "Ready Plan footers must use the fixed optimized artwork.");
+assert.match(publicReadyPlanUi, /group relative isolate min-h-\[290px\]/, "Ready Plan suggestions must keep their responsive text overlay on the image.");
+assert.match(publicReadyPlanUi, /xl:grid-cols-\[220px_minmax\(0,1fr\)_300px\]/, "Laptop Ready Plan columns must fit without clipping suggestions.");
 assert.doesNotMatch(publicReadyPlanUi, /content\.hero\.primaryCtaText/, "The hero-level booking action must remain removed.");
 assert.equal([...publicReadyPlanUi.matchAll(/View Full Timeline/g)].length, 1, "Only the itinerary timeline control should remain; the hero control must stay removed.");
 
