@@ -6,6 +6,7 @@ import { recordUserActivity } from "@/lib/customer-activity";
 import { tableExists } from "@/lib/prisma-safe";
 import { ensureUserProfile } from "@/lib/profile/ensureUserProfile";
 import { createRouteClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -103,6 +104,19 @@ export async function POST(req: NextRequest) {
 
   if (!parsed.data.storageKey.startsWith(`${user.id}/`)) {
     return NextResponse.json({ ok: false, code: "INVALID_STORAGE_KEY" }, { status: 400 });
+  }
+
+  const bucket = process.env.SUPABASE_TRAVEL_DOCUMENTS_BUCKET || "gene-travel-documents";
+  const parts = parsed.data.storageKey.split("/");
+  const filename = parts.pop();
+  const folder = parts.join("/");
+  if (!filename || folder.split("/")[0] !== user.id) {
+    return NextResponse.json({ ok: false, code: "INVALID_STORAGE_KEY" }, { status: 400 });
+  }
+  const { data: objects, error: storageError } = await supabaseAdmin.storage
+    .from(bucket).list(folder, { search: filename, limit: 10 });
+  if (storageError || !objects?.some((object) => object.name === filename)) {
+    return NextResponse.json({ ok: false, code: "DOCUMENT_NOT_UPLOADED" }, { status: 400 });
   }
 
   const document = await prisma.travelDocument.create({

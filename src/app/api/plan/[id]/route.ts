@@ -55,9 +55,19 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const { data } = await supabase.auth.getUser();
     if (!data?.user) return NextResponse.json({ ok: false, code: "NOT_AUTHED" }, { status: 401 });
 
-    const body = (await req.json().catch(() => null)) as { payload?: RecommendationPayload; expectedVersion?: number } | null;
+    const raw = await req.text();
+    if (raw.length > 256_000) return NextResponse.json({ ok: false, code: "PAYLOAD_TOO_LARGE" }, { status: 413 });
+    const body = (await Promise.resolve().then(() => JSON.parse(raw || "null")).catch(() => null)) as { payload?: RecommendationPayload; expectedVersion?: number } | null;
     const payload = body?.payload;
 
+    if (!payload || !payload.inputs || typeof payload.inputs.destination !== "string" ||
+        !Array.isArray(payload.dayPlan) || payload.dayPlan.length > 60 ||
+        payload.dayPlan.some((day) => !day || !Number.isInteger(day.day) || typeof day.date !== "string" ||
+          !Number.isFinite(new Date(day.date).getTime()) || !Array.isArray(day.items) || day.items.length > 30 ||
+          day.items.some((item) => !item || typeof item.title !== "string" || item.title.length > 240 ||
+            typeof item.type !== "string" || typeof item.slot !== "string"))) {
+      return NextResponse.json({ ok: false, code: "INVALID_PAYLOAD" }, { status: 400 });
+    }
     if (!payload) {
       return NextResponse.json({ ok: false, code: "MISSING_PAYLOAD" }, { status: 400 });
     }

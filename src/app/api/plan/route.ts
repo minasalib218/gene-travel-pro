@@ -13,7 +13,10 @@ export async function POST(req: NextRequest) {
     }
     await ensureUserProfile(data.user, "PLAN_CREATED");
 
-    const body = await req.json();
+    const raw = await req.text();
+    if (raw.length > 64_000) return NextResponse.json({ error: "Plan input too large" }, { status: 413 });
+    const body = await Promise.resolve().then(() => JSON.parse(raw || "null")).catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
 
     const {
       destination,
@@ -30,6 +33,11 @@ export async function POST(req: NextRequest) {
       idempotencyKey,
     } = body || {};
 
+    if (typeof destination !== "string" || !destination.trim() || destination.length > 160 ||
+        typeof startDate !== "string" || typeof endDate !== "string" ||
+        (idempotencyKey !== undefined && (typeof idempotencyKey !== "string" || idempotencyKey.length > 128))) {
+      return NextResponse.json({ error: "Invalid plan input" }, { status: 400 });
+    }
     if (!destination || !startDate || !endDate) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
@@ -47,7 +55,7 @@ export async function POST(req: NextRequest) {
 
     const s = new Date(startDate);
     const e = new Date(endDate);
-    if (!Number.isFinite(s.getTime()) || !Number.isFinite(e.getTime()) || e < s) {
+    if (!Number.isFinite(s.getTime()) || !Number.isFinite(e.getTime()) || e < s || (e.getTime() - s.getTime()) / 86400000 > 60) {
       return NextResponse.json({ error: "Invalid travel dates" }, { status: 400 });
     }
     const nights = Math.max(1, Math.round((e.getTime() - s.getTime()) / 86400000));

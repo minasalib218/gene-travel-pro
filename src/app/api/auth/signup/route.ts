@@ -1,8 +1,5 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase/admin";
-import { prisma } from "@/lib/prisma";
-import { ensureUserProfile } from "@/lib/profile/ensureUserProfile";
-import { mergeGuestDataIntoUser, readGuestIdentityFromCookieHeader } from "@/lib/profile/guestMerge";
+import { createRouteClient } from "@/lib/supabase/server";
 
 function cleanPhone(phone: string) {
   return phone.replace(/\s+/g, "");
@@ -53,14 +50,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Passwords do not match." }, { status: 400 });
     }
 
-    const { data: created, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+    // Public signup must prove ownership of the email before it can claim
+    // purchases or credits associated with that address.
+    const supabase = createRouteClient();
+    const { data: created, error: createErr } = await supabase.auth.signUp({
       email,
       password,
-      email_confirm: true,
-      user_metadata: {
-        full_name: fullName,
-        birth_date: birthDate,
-        phone,
+      options: {
+        data: { full_name: fullName, birth_date: birthDate, phone },
       },
     });
 
@@ -71,61 +68,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const userId = created.user.id;
-
-    try {
-      await ensureUserProfile(created.user, "PROFILE_CREATED");
-      await mergeGuestDataIntoUser({
-        userId,
-        ...readGuestIdentityFromCookieHeader(req.headers.get("cookie")),
-        source: "signup",
-      });
-
-      await prisma.$transaction([
-        prisma.customerEvent.updateMany({
-          where: {
-            email,
-            userId: null,
-          },
-          data: { userId },
-        }),
-        prisma.payment.updateMany({
-          where: {
-            customerEmail: email,
-            userId: null,
-          },
-          data: { userId },
-        }),
-        prisma.pass.updateMany({
-          where: {
-            customerEmail: email,
-            userId: null,
-          },
-          data: {
-            userId,
-            profileId: userId,
-          },
-        }),
-        prisma.creditLedger.updateMany({
-          where: {
-            customerEmail: email,
-            userId: null,
-          },
-          data: { userId },
-        }),
-        prisma.emailLog.updateMany({
-          where: {
-            customerEmail: email,
-            userId: null,
-          },
-          data: { userId },
-        }),
-      ]);
-    } catch (profileErr: any) {
-      console.error("signup profile sync warning:", profileErr?.message || profileErr);
-    }
-
-    return NextResponse.json({ ok: true, userId }, { status: 200 });
+    // Supabase may return an obfuscated user for an already registered email.
+    // Never provision a profile or claim email-linked records at signup.
+    return NextResponse.json({ ok: true, verificationRequired: !created.session }, { status: 200 });
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message || "Server error" },
