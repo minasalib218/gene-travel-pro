@@ -102,6 +102,13 @@ assert.match(publicReadyPlan, /bookableItemIds/, "Public ready-plan pages must u
 
 const authCallback = read("src/app/auth/callback/route.ts");
 assert.match(authCallback, /exchangeCodeForSession/, "The PKCE callback must exchange the authorization code server-side.");
+assert.match(authCallback, /private, no-store, max-age=0/, "OAuth callback responses must never be cached.");
+assert.match(authCallback, /GOOGLE_PROFILE_SETUP_FAILED/, "Google profile setup failures must return a controlled sign-in error.");
+
+const googleAuth = read("src/app/api/auth/google/route.ts");
+assert.match(googleAuth, /provider: "google"/, "Google OAuth must remain enabled in the application flow.");
+assert.match(googleAuth, /private, no-store, max-age=0/, "OAuth start responses carrying PKCE cookies must never be cached.");
+assert.match(googleAuth, /response\.headers\.set\("Location", data\.url\)/, "The Google redirect must preserve the original PKCE cookie response.");
 assert.match(authCallback, /ensureUserProfile/, "The PKCE callback must provision exactly one permanent profile.");
 assert.match(authCallback, /safeInternalPath/, "The PKCE callback must reject unsafe return paths.");
 

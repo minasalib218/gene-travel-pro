@@ -10,18 +10,29 @@ function safeInternalPath(value: string | null) {
   return value;
 }
 
+function preventAuthCaching(response: NextResponse) {
+  response.headers.set("Cache-Control", "private, no-store, max-age=0");
+  response.headers.set("Pragma", "no-cache");
+  response.headers.set("Expires", "0");
+  return response;
+}
+
+function authErrorRedirect(origin: string, error = "auth_callback_failed") {
+  return preventAuthCaching(NextResponse.redirect(new URL(`/signin?error=${error}`, origin)));
+}
+
 export async function GET(req: Request) {
   const requestUrl = new URL(req.url);
   const code = requestUrl.searchParams.get("code");
   const next = safeInternalPath(requestUrl.searchParams.get("next"));
   const completeUrl = new URL("/auth/complete", requestUrl.origin);
   completeUrl.searchParams.set("next", next);
-  const response = NextResponse.redirect(completeUrl);
+  const response = preventAuthCaching(NextResponse.redirect(completeUrl));
   const url = getSupabaseUrl();
   const publishableKey = getSupabaseAnonKey();
 
   if (!code || !url || !publishableKey) {
-    return NextResponse.redirect(new URL("/signin?error=auth_callback_failed", requestUrl.origin));
+    return authErrorRedirect(requestUrl.origin);
   }
 
   const supabase = createServerClient(url, publishableKey, {
@@ -44,15 +55,21 @@ export async function GET(req: Request) {
 
   const { data, error } = await supabase.auth.exchangeCodeForSession(code);
   if (error || !data.user) {
-    return NextResponse.redirect(new URL("/signin?error=auth_callback_failed", requestUrl.origin));
+    console.error("[GOOGLE_AUTH_CALLBACK_FAILED]", error?.message || "Missing authenticated user");
+    return authErrorRedirect(requestUrl.origin);
   }
 
-  const profile = await ensureUserProfile(data.user, "SIGN_IN");
-  if (!profile) {
+  try {
+    const profile = await ensureUserProfile(data.user, "SIGN_IN");
+    if (profile) return response;
+
+    await supabase.auth.signOut().catch(() => undefined);
+    response.headers.set("location", new URL("/signin?error=profile_unavailable", requestUrl.origin).toString());
+    return response;
+  } catch (profileError) {
+    console.error("[GOOGLE_PROFILE_SETUP_FAILED]", profileError);
     await supabase.auth.signOut().catch(() => undefined);
     response.headers.set("location", new URL("/signin?error=profile_unavailable", requestUrl.origin).toString());
     return response;
   }
-
-  return response;
 }

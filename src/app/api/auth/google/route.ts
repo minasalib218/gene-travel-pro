@@ -6,6 +6,17 @@ function safeInternalPath(value: string | null) {
   return value && value.startsWith("/") && !value.startsWith("//") && !value.includes("\\") ? value : "/profile";
 }
 
+function preventAuthCaching(response: NextResponse) {
+  response.headers.set("Cache-Control", "private, no-store, max-age=0");
+  response.headers.set("Pragma", "no-cache");
+  response.headers.set("Expires", "0");
+  return response;
+}
+
+function authErrorRedirect(origin: string) {
+  return preventAuthCaching(NextResponse.redirect(new URL("/signin?error=auth_callback_failed", origin)));
+}
+
 export async function GET(req: Request) {
   const requestUrl = new URL(req.url);
   const next = safeInternalPath(requestUrl.searchParams.get("next"));
@@ -13,10 +24,10 @@ export async function GET(req: Request) {
   const key = getSupabaseAnonKey();
 
   if (!url || !key) {
-    return NextResponse.redirect(new URL("/signin?error=auth_callback_failed", requestUrl.origin));
+    return authErrorRedirect(requestUrl.origin);
   }
 
-  let response = NextResponse.redirect(new URL("/signin?error=auth_callback_failed", requestUrl.origin));
+  const response = authErrorRedirect(requestUrl.origin);
   const supabase = createServerClient(url, key, {
     cookies: {
       getAll() {
@@ -40,8 +51,7 @@ export async function GET(req: Request) {
   });
 
   if (error || !data.url) return response;
-  const cookies = response.cookies.getAll();
-  response = NextResponse.redirect(data.url);
-  cookies.forEach((cookie) => response.cookies.set(cookie));
+  // Keep the same response so the PKCE cookie and all of its attributes survive the redirect.
+  response.headers.set("Location", data.url);
   return response;
 }
