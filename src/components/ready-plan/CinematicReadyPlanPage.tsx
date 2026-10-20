@@ -251,11 +251,11 @@ export default function CinematicReadyPlanPage({
       />
 
       <div className="hidden lg:block">
-      <section className="relative overflow-hidden">
+      <section className="relative min-h-[720px] overflow-hidden lg:min-h-[760px]">
         <div className="absolute inset-0">
           <motion.div
             style={{ y: heroOffset * -1 }}
-            className="absolute inset-0"
+            className="absolute inset-0 scale-[1.02]"
             transition={{ duration: 0.55, ease }}
           >
             <Img
@@ -265,11 +265,12 @@ export default function CinematicReadyPlanPage({
               eager
             />
           </motion.div>
-          <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(22,15,12,0.82)_0%,rgba(22,15,12,0.54)_36%,rgba(9,8,7,0.68)_100%)]" />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_58%_22%,rgba(255,153,76,0.22),transparent_18%),radial-gradient(circle_at_22%_14%,rgba(255,255,255,0.08),transparent_24%),linear-gradient(180deg,rgba(15,10,8,0.12)_0%,rgba(9,7,6,0.78)_100%)]" />
+          <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(20,12,8,0.78)_0%,rgba(20,12,8,0.46)_38%,rgba(12,8,6,0.34)_70%,rgba(12,8,6,0.5)_100%)]" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_60%_24%,rgba(255,164,88,0.26),transparent_23%),radial-gradient(circle_at_20%_12%,rgba(255,255,255,0.1),transparent_25%),linear-gradient(180deg,rgba(12,8,6,0.08)_0%,rgba(25,13,8,0.12)_68%,rgba(56,27,12,0.38)_100%)] shadow-[inset_0_0_180px_rgba(0,0,0,0.34)]" />
+          <div className="absolute inset-x-0 bottom-0 h-24 bg-[linear-gradient(180deg,rgba(55,26,12,0),rgba(55,26,12,0.24))]" />
         </div>
 
-        <div className={`relative mx-auto ${PAGE_MAX_WIDTH} ${PAGE_PADDING} pb-14 pt-6 lg:pb-24`}>
+        <div className={`relative mx-auto ${PAGE_MAX_WIDTH} ${PAGE_PADDING} pb-28 pt-6 lg:pb-32`}>
           <div className="flex items-center justify-between gap-4">
             <Link href="/ready-plans" className="inline-flex items-center gap-3">
               <Img src={logoUrl} alt="Gene Travel" className="h-12 w-auto object-contain md:h-14" eager />
@@ -292,22 +293,26 @@ export default function CinematicReadyPlanPage({
 
           <div className="mt-12 grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
             <div className="max-w-4xl">
+              <div className="mb-5 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#ffd0a4]">
+                <span className="h-px w-10 bg-[#ff7a00] shadow-[0_0_12px_rgba(255,122,0,0.75)]" />
+                Cinematic Ready Plan
+              </div>
               <motion.h1
                 initial={{ opacity: 0, y: 18 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.72, ease }}
-                className="max-w-3xl font-serif text-[52px] leading-[0.94] tracking-[-0.03em] text-white md:text-[72px]"
+                className="max-w-4xl font-serif text-[58px] font-normal leading-[0.92] text-white drop-shadow-[0_8px_26px_rgba(0,0,0,0.48)] md:text-[78px] xl:text-[86px]"
               >
                 <span className="block">{heroTitle.lead || content.hero.title}</span>
                 {heroTitle.accent ? (
-                  <span className="mt-2 block text-[#ff8a1f]">
+                  <span className="mt-2 block italic text-[#ff8a1f] drop-shadow-[0_7px_24px_rgba(45,16,0,0.46)]">
                     {heroTitle.accent}
                     <span className="ml-3 text-[#ffc78c]">+</span>
                   </span>
                 ) : null}
               </motion.h1>
 
-              <p className="mt-6 max-w-2xl text-[15px] leading-7 text-white/82">
+              <p className="mt-7 max-w-2xl border-l-2 border-[#ff7a00]/75 pl-4 text-[16px] leading-7 text-white/86 drop-shadow-[0_3px_12px_rgba(0,0,0,0.45)]">
                 {content.hero.subtitle}
               </p>
 
@@ -734,34 +739,34 @@ function MobileReadyPlanView({
 
   return (
     <div className="lg:hidden">
-      <div className="space-y-6 px-3 pb-28 pt-3">
-        <section className="relative overflow-hidden rounded-[16px] border border-white/10 bg-black/30 shadow-[0_18px_60px_rgba(0,0,0,0.28)]">
-          <Img src={content.hero.backgroundImage} alt={content.hero.title} className="h-[280px] w-full object-cover" eager />
-          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.08)_0%,rgba(0,0,0,0.26)_44%,rgba(0,0,0,0.86)_100%)]" />
+      <div className="space-y-6 px-3 pb-28">
+        <section className="relative -mx-3 min-h-[460px] overflow-hidden rounded-b-[24px] border-b border-white/12 shadow-[0_22px_70px_rgba(0,0,0,0.3)] sm:min-h-[500px] md:min-h-[540px]">
+          <Img src={content.hero.backgroundImage} alt={content.hero.title} className="absolute inset-0 h-full w-full object-cover" eager />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_62%_22%,rgba(255,167,92,0.22),transparent_24%),linear-gradient(180deg,rgba(8,6,5,0.12)_0%,rgba(10,7,5,0.1)_38%,rgba(27,14,8,0.3)_72%,rgba(59,28,12,0.55)_100%)] shadow-[inset_0_0_100px_rgba(0,0,0,0.28)]" />
           <div className="absolute inset-x-0 top-0 flex items-center justify-between p-4">
             <Link href="/ready-plans" className="inline-flex h-10 items-center">
               <Img src={logoUrl} alt="Gene Travel" className="h-10 w-auto object-contain" eager />
             </Link>
-            <button
-              type="button"
-              onClick={() => goToDay(activeDayIndex - 1)}
-              disabled={activeDayIndex === 0}
-              className="inline-flex h-11 w-11 items-center justify-center rounded-[12px] border border-white/20 bg-black/30 text-white backdrop-blur disabled:opacity-40"
-              aria-label="Previous day"
-            >
-              <ChevronLeft size={22} />
-            </button>
+            <div className="inline-flex h-10 items-center gap-2 rounded-full border border-white/18 bg-black/22 px-3 text-[11px] font-semibold text-white/90 backdrop-blur-md">
+              <Music4 size={14} className="text-[#ffb36d]" />
+              <span className="hidden sm:inline">Cinematic Story</span>
+            </div>
           </div>
-          <div className="absolute inset-x-0 bottom-0 p-4 text-center">
-            <h1 className="font-serif text-[26px] font-semibold leading-[1.02] text-white">
+          <div className="absolute inset-x-0 bottom-0 p-5 text-center sm:p-7 md:p-9">
+            <div className="mb-3 flex items-center justify-center gap-2 text-[9px] font-bold uppercase tracking-[0.18em] text-[#ffd0a4] sm:text-[10px]">
+              <span className="h-px w-7 bg-[#ff7a00]" />
+              Cinematic Ready Plan
+              <span className="h-px w-7 bg-[#ff7a00]" />
+            </div>
+            <h1 className="font-serif text-[34px] font-normal leading-[0.95] text-white drop-shadow-[0_6px_20px_rgba(0,0,0,0.58)] sm:text-[46px] md:text-[56px]">
               <span className="block">{mobileHeroTitle.lead || content.hero.title}</span>
               {mobileHeroTitle.accent ? (
-                <span className="mt-1 block text-[#ff8a1f]">
+                <span className="mt-2 block italic text-[#ff8a1f]">
                   {mobileHeroTitle.accent} <span className="text-[#ffc78c]">+</span>
                 </span>
               ) : null}
             </h1>
-            <p className="mx-auto mt-2 max-w-[310px] text-[14px] leading-5 text-white/82">{content.hero.subtitle}</p>
+            <p className="mx-auto mt-4 max-w-[540px] text-[13px] leading-5 text-white/86 drop-shadow-[0_3px_10px_rgba(0,0,0,0.5)] sm:text-[14px] sm:leading-6">{content.hero.subtitle}</p>
             <div className="mt-4 flex flex-wrap justify-center gap-2">
               {content.hero.stats.slice(0, 5).map((stat) => (
                 <div key={`${stat.label}-${stat.value}`} className="rounded-[12px] border border-white/15 bg-white/10 px-3 py-2 backdrop-blur">
@@ -926,14 +931,24 @@ function MobileReadyPlanView({
         </section>
       </div>
 
-      <button
-        type="button"
-        onClick={() => goToDay(activeDayIndex + 1)}
-        disabled={lastDay}
-        className="fixed bottom-4 right-3 z-40 h-11 w-[120px] rounded-[12px] bg-[#ff7a00] text-[14px] font-bold text-white shadow-[0_14px_36px_rgba(0,0,0,0.28)] disabled:bg-white/20 disabled:text-white/45"
-      >
-        Next Day →
-      </button>
+      <div className="pointer-events-none fixed inset-x-3 bottom-4 z-40 flex items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={() => goToDay(activeDayIndex - 1)}
+          disabled={activeDayIndex === 0}
+          className="pointer-events-auto inline-flex h-11 w-[120px] items-center justify-center gap-1.5 rounded-[12px] border border-white/16 bg-[#211712]/92 text-[13px] font-bold text-white shadow-[0_14px_36px_rgba(0,0,0,0.28)] backdrop-blur-md disabled:border-white/8 disabled:bg-white/10 disabled:text-white/38"
+        >
+          <ChevronLeft size={17} /> Previous Day
+        </button>
+        <button
+          type="button"
+          onClick={() => goToDay(activeDayIndex + 1)}
+          disabled={lastDay}
+          className="pointer-events-auto inline-flex h-11 w-[120px] items-center justify-center gap-1.5 rounded-[12px] bg-[#ff7a00] text-[13px] font-bold text-white shadow-[0_14px_36px_rgba(0,0,0,0.28)] disabled:bg-white/20 disabled:text-white/45"
+        >
+          Next Day <ChevronRight size={17} />
+        </button>
+      </div>
 
       <MobileOverlaySheet overlay={overlay} setOverlay={setOverlay} activeDay={activeDay} days={days} goToDay={goToDay} />
     </div>

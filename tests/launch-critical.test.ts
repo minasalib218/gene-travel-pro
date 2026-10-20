@@ -141,6 +141,10 @@ assert.match(publicReadyPlanUi, /READY_PLAN_IMAGE_FALLBACK/, "Broken Ready Plan 
 assert.match(publicReadyPlanUi, /READY_PLAN_FOOTER_IMAGE = "\/bg\/home-hero-bottom-optimized\.jpg"/, "Ready Plan footers must use the fixed optimized artwork.");
 assert.match(publicReadyPlanUi, /group relative isolate min-h-\[290px\]/, "Ready Plan suggestions must keep their responsive text overlay on the image.");
 assert.match(publicReadyPlanUi, /xl:grid-cols-\[220px_minmax\(0,1fr\)_300px\]/, "Laptop Ready Plan columns must fit without clipping suggestions.");
+assert.match(publicReadyPlanUi, /min-h-\[460px\][\s\S]{0,180}rounded-b-\[24px\]/, "The mobile Ready Plan hero must remain full-bleed without a black lower margin.");
+assert.match(publicReadyPlanUi, /Cinematic Ready Plan/, "The Ready Plan hero must retain its cinematic title treatment.");
+assert.match(publicReadyPlanUi, /<ChevronLeft size=\{17\} \/> Previous Day/, "Mobile Ready Plans must provide a Previous Day control.");
+assert.match(publicReadyPlanUi, /Next Day <ChevronRight size=\{17\} \/>/, "Mobile Ready Plans must provide a matching Next Day control.");
 assert.doesNotMatch(publicReadyPlanUi, /content\.hero\.primaryCtaText/, "The hero-level booking action must remain removed.");
 assert.equal([...publicReadyPlanUi.matchAll(/View Full Timeline/g)].length, 1, "Only the itinerary timeline control should remain; the hero control must stay removed.");
 
