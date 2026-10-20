@@ -2,6 +2,8 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse } from "next/server";
 import { getSupabaseAnonKey, getSupabaseUrl } from "@/lib/env";
 
+const AUTH_RETURN_PATH_COOKIE = "gene_auth_return_path";
+
 function safeInternalPath(value: string | null) {
   return value && value.startsWith("/") && !value.startsWith("//") && !value.includes("\\") ? value : "/profile";
 }
@@ -28,6 +30,13 @@ export async function GET(req: Request) {
   }
 
   const response = authErrorRedirect(requestUrl.origin);
+  response.cookies.set(AUTH_RETURN_PATH_COOKIE, next, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 10 * 60,
+  });
   const supabase = createServerClient(url, key, {
     cookies: {
       getAll() {
@@ -44,7 +53,6 @@ export async function GET(req: Request) {
   });
 
   const callback = new URL("/auth/callback", requestUrl.origin);
-  callback.searchParams.set("next", next);
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: { redirectTo: callback.toString() },

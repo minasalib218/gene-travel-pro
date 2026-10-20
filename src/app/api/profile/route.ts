@@ -346,15 +346,15 @@ async function getCustomerTrips(userId: string) {
     >(
       Prisma.sql`
         SELECT
-          "id",
-          "title",
-          COALESCE("destination", '') AS "destination",
-          "createdAt",
-          "summaryJson"
-        FROM "plans"
-        WHERE "userId" = ${userId}
-          AND "status" IN ('DRAFT', 'RECOMMENDED', 'ANALYZED', 'CONFIRMED')
-        ORDER BY "createdAt" DESC
+          id::text AS "id",
+          title AS "title",
+          COALESCE(destination, '') AS "destination",
+          created_at AS "createdAt",
+          summary_json AS "summaryJson"
+        FROM public.customer_plans
+        WHERE user_id = ${userId}::uuid
+          AND status IN ('DRAFT', 'RECOMMENDED', 'ANALYZED', 'CONFIRMED')
+        ORDER BY created_at DESC
       `,
     );
   } catch (error) {

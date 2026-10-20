@@ -1,7 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { getSupabaseAnonKey, getSupabaseUrl } from "@/lib/env";
 import { ensureUserProfile } from "@/lib/profile/ensureUserProfile";
+
+const AUTH_RETURN_PATH_COOKIE = "gene_auth_return_path";
 
 function safeInternalPath(value: string | null) {
   if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) {
@@ -21,13 +23,22 @@ function authErrorRedirect(origin: string, error = "auth_callback_failed") {
   return preventAuthCaching(NextResponse.redirect(new URL(`/signin?error=${error}`, origin)));
 }
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   const requestUrl = new URL(req.url);
   const code = requestUrl.searchParams.get("code");
-  const next = safeInternalPath(requestUrl.searchParams.get("next"));
+  const next = safeInternalPath(
+    req.cookies.get(AUTH_RETURN_PATH_COOKIE)?.value ?? requestUrl.searchParams.get("next"),
+  );
   const completeUrl = new URL("/auth/complete", requestUrl.origin);
   completeUrl.searchParams.set("next", next);
   const response = preventAuthCaching(NextResponse.redirect(completeUrl));
+  response.cookies.set(AUTH_RETURN_PATH_COOKIE, "", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 0,
+  });
   const url = getSupabaseUrl();
   const publishableKey = getSupabaseAnonKey();
 

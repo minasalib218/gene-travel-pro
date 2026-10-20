@@ -109,6 +109,9 @@ const googleAuth = read("src/app/api/auth/google/route.ts");
 assert.match(googleAuth, /provider: "google"/, "Google OAuth must remain enabled in the application flow.");
 assert.match(googleAuth, /private, no-store, max-age=0/, "OAuth start responses carrying PKCE cookies must never be cached.");
 assert.match(googleAuth, /response\.headers\.set\("Location", data\.url\)/, "The Google redirect must preserve the original PKCE cookie response.");
+assert.match(googleAuth, /AUTH_RETURN_PATH_COOKIE/, "Google OAuth must preserve the requested destination outside the provider callback URL.");
+assert.doesNotMatch(googleAuth, /callback\.searchParams\.set\("next"/, "The provider callback URL must exactly match the Supabase allow-list entry.");
+assert.match(authCallback, /req\.cookies\.get\(AUTH_RETURN_PATH_COOKIE\)/, "The PKCE callback must restore the safe post-login destination from its short-lived cookie.");
 assert.match(authCallback, /ensureUserProfile/, "The PKCE callback must provision exactly one permanent profile.");
 assert.match(authCallback, /safeInternalPath/, "The PKCE callback must reject unsafe return paths.");
 
@@ -129,6 +132,8 @@ assert.doesNotMatch(adminProfileContent, /deleteMany|delete\(/, "Profile content
 const profileApi = read("src/app/api/profile/route.ts");
 assert.match(profileApi, /hiddenOfferIds/, "Customer offers must honor admin visibility controls.");
 assert.match(profileApi, /pinnedOfferIds/, "Customer offers must honor admin pinning controls.");
+assert.match(profileApi, /FROM public\.customer_plans/, "Profile trips must read the current customer-owned trip table.");
+assert.match(profileApi, /created_at AS "createdAt"/, "Profile trips must map the current snake-case schema to the UI contract.");
 
 const adminUserPage = read("src/app/(admin)/admin/users/[id]/page.tsx");
 assert.match(adminUserPage, /AdminCustomerProfileContent/, "The user detail page must expose per-customer profile content controls.");
